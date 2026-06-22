@@ -1,0 +1,8 @@
+.workbuddy/memory/backtest/alerts/*
+.workbuddy/memory/backtest/learnings/*
+.workbuddy/memory/backtest/predictions/*
+.workbuddy/memory/backtest/results/*
+!.workbuddy/memory/backtest/alerts/.gitkeep
+!.workbuddy/memory/backtest/learnings/.gitkeep
+!.workbuddy/memory/backtest/predictions/.gitkeep
+!.workbuddy/memory/backtest/results/.gitkeep

@@ -1,0 +1,129 @@
+{
+  "name": "cutting-tool-pricer",
+  "version": "2.8.0",
+  "description": "A 6-agent team for cutting-tool raw material market analysis using current metal spot prices, multi-source validation, global news intelligence, supply-chain event scanning, international price signals, downstream demand sensing, and a one-day prediction loop. The team records D-day spot price + news-based D+1 volatility judgments, verifies them against the next day's actual spot price, reviews misses, and uses learnings to improve future judgment.",
+  "author": {
+    "name": "WorkBuddy",
+    "email": "support@workbuddy.cn"
+  },
+  "agents": [
+    "./agents/cutting-tool-pricer-team-lead.md",
+    "./agents/global-event-intel.md",
+    "./agents/metals-analyst.md",
+    "./agents/supply-chain-intel.md",
+    "./agents/cost-modeler.md",
+    "./agents/risk-control.md"
+  ],
+  "skills": [
+    "./skills/spot-price-fetcher",
+    "./skills/tool-cost-model",
+    "./skills/supply-chain-scanner",
+    "./skills/news-impact-mapper",
+    "./skills/price-driver-matrix",
+    "./skills/demand-sensor",
+    "./skills/daily-metal-briefing",
+    "./skills/multi-source-validator",
+    "./skills/global-price-signal-detector",
+    "./skills/next-day-volatility-tracker"
+  ],
+  "expertType": "team",
+  "agentName": "cutting-tool-pricer-team-lead",
+  "teamInfo": {
+    "leadAgent": "cutting-tool-pricer-team-lead",
+    "memberAgents": [
+      "global-event-intel",
+      "metals-analyst",
+      "supply-chain-intel",
+      "cost-modeler",
+      "risk-control"
+    ]
+  },
+  "displayName": {
+    "en": "Tool Price Oracle Team",
+    "zh": "刀具行情参谋团"
+  },
+  "profession": {
+    "en": "Tool Price Oracle Team",
+    "zh": "刀具行情参谋团"
+  },
+  "displayDescription": {
+    "en": "6-agent team: current spot prices + global news + supply-chain intelligence + cost impact modeling + procurement risk control. Runs a one-day loop: record today's spot price and news-based D+1 volatility judgment, verify it tomorrow, analyze misses, and improve future judgment.",
+    "zh": "六员协作：当日现货采集、多源校验、全球新闻、供应链情报、成本影响建模和采购风控。只做单日闭环：今天记录现货价和新闻驱动的明日波动判断，明天核对实际价格，分析偏差并沉淀经验。"
+  },
+  "avatar": "avatars/expert.png",
+  "categoryId": "08-FinanceInvestment",
+  "defaultInitPrompt": {
+    "zh": "帮我看今天钴、钨、镍和铁矿石现货价，结合最新新闻判断明天波动，并复盘昨天预测准不准。",
+    "en": "Check today's cobalt, tungsten, nickel, and iron ore spot prices, judge tomorrow's volatility from the latest news, and review whether yesterday's prediction was accurate."
+  },
+  "plugin": "cutting-tool-pricer",
+  "tags": [
+    { "en": "Spot Metal Prices", "zh": "金属现货" },
+    { "en": "Next-Day Volatility", "zh": "次日波动" },
+    { "en": "Global News Intelligence", "zh": "全球事件研判" },
+    { "en": "Supply Chain Scanner", "zh": "供应链事件扫描" },
+    { "en": "Demand Sensing", "zh": "下游需求感知" },
+    { "en": "Cutting Tool Pricing", "zh": "刀具报价决策" },
+    { "en": "Daily Verification", "zh": "每日核对" },
+    { "en": "Multi-Source Validation", "zh": "多源校验" },
+    { "en": "International Price Signals", "zh": "国际价格信号检测" }
+  ],
+  "quickPrompts": [
+    {
+      "en": "Check today's cobalt price, collect the latest news, predict tomorrow's direction and range, then record it for verification.",
+      "zh": "获取今天钴价，收集最新新闻，判断明天涨跌方向和幅度区间，并登记明天核对。"
+    },
+    {
+      "en": "Review whether yesterday's copper volatility prediction was accurate and explain any miss.",
+      "zh": "复盘昨天铜价次日波动预测准不准，如果不准说明原因。"
+    },
+    {
+      "en": "Analyze the current tungsten and cobalt supply-chain news and estimate tomorrow's impact on carbide tool costs.",
+      "zh": "分析当前钨和钴供应链新闻，估算明天对硬质合金刀具成本的影响。"
+    }
+  ],
+  "members": [
+    {
+      "id": "cutting-tool-pricer-team-lead",
+      "displayName": { "en": "Luan Jinchuan", "zh": "栾金川" },
+      "profession": { "en": "Chief Market Strategist", "zh": "首席行情策略师" },
+      "avatar": "avatars/expert.png",
+      "role": "lead"
+    },
+    {
+      "id": "global-event-intel",
+      "displayName": { "en": "Wen Huanyu", "zh": "闻寰宇" },
+      "profession": { "en": "Global Event Intelligence Officer", "zh": "全球事件情报官" },
+      "avatar": "avatars/expert.png",
+      "role": "member"
+    },
+    {
+      "id": "metals-analyst",
+      "displayName": { "en": "Jin Shouheng", "zh": "金守恒" },
+      "profession": { "en": "Metal Market Analyst", "zh": "金属行情分析师" },
+      "avatar": "avatars/expert.png",
+      "role": "member"
+    },
+    {
+      "id": "supply-chain-intel",
+      "displayName": { "en": "Kuang Wenda", "zh": "矿闻达" },
+      "profession": { "en": "Supply Chain Intelligence Officer", "zh": "供应链情报官" },
+      "avatar": "avatars/expert.png",
+      "role": "member"
+    },
+    {
+      "id": "cost-modeler",
+      "displayName": { "en": "He Jiaming", "zh": "何价明" },
+      "profession": { "en": "Tool Cost Modeler", "zh": "刀具成本建模师" },
+      "avatar": "avatars/expert.png",
+      "role": "member"
+    },
+    {
+      "id": "risk-control",
+      "displayName": { "en": "Du Jianwei", "zh": "杜渐微" },
+      "profession": { "en": "Procurement Risk Controller", "zh": "采购风控官" },
+      "avatar": "avatars/expert.png",
+      "role": "member"
+    }
+  ]
+}
