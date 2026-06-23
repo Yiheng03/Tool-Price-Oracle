@@ -1,112 +1,163 @@
 # Cutting Tool Price Oracle
 
-Current workflow:
+WorkBuddy expert-team workflow for cutting-tool raw-material market tracking,
+D+1 metal volatility prediction, report publishing, and next-day backtesting.
 
-1. Fetch today's spot price for the target metal.
-2. Validate the price with multiple sources when needed.
-3. Collect news, supply-chain events, international price signals, demand data, and policy context.
-4. Make a human/LLM D+1 direction and range judgment.
-5. Store the record as `.workbuddy/memory/backtest/predictions/{METAL}_{YYYY-MM-DD}_1d.json`.
-6. On D+1, fetch the actual spot price, calculate actual movement, verify direction/range hit, explain misses, and append learnings.
+The repository is intentionally split into:
 
-## Architecture
+- **Executable orchestration** in `scripts/`
+- **Expert-team prompts and skills** in `agents/` and `skills/`
+- **Schemas and static references** in `references/`
+- **Runtime memory** under `.workbuddy/memory/`
 
-This project combines two layers:
+Runtime memory is generated state. Keep the directory skeleton, but do not commit
+prices, predictions, backtest results, model outputs, signals, or generated
+reports.
 
-**Executable code** (`scripts/build_html_report.py`): validates report JSON against
-`references/report-schema.json`, generates typed HTML reports, writes latest JSON and
-timestamped snapshots, and rebuilds the static report index. This is the only automated
-pipeline — run it after an agent produces a report JSON.
+## Daily Workflow
 
-**Agent/skill instructions** (`agents/*.md`, `skills/*/SKILL.md`): these define the
-analysis workflow (spot price fetching, multi-source validation, news scanning, supply
-chain intelligence, cost modeling, risk control, backtest registration) as LLM agent
-prompts. They are not executable scripts — a human or LLM orchestrator (e.g. WorkBuddy)
-must follow them step by step to produce the report JSON that feeds into the HTML
-pipeline.
+Run the default daily loop:
 
-To close the automation gap, you would need to add scripts or tools that call price
-APIs, validate sources, and register backtests programmatically, rather than relying
-solely on LLM instruction-following.
+```powershell
+py scripts\daily_workbuddy_run.py --date YYYY-MM-DD
+```
 
-## Report types
+The default loop performs:
 
-Every report JSON must declare one `report_type`. Different report types are
-stored and rendered separately so their content is not forced into one layout.
+1. Review yesterday's registered predictions.
+2. Read cached D+1 actual prices.
+3. Write verification results when actual prices are available.
+4. Generate WorkBuddy tasks for missing price fetches, bias review, headline
+   writing, and prediction work.
+5. Read current learnings.
+6. Write today's predictions when model output or signal files are available.
+7. Return a manifest with the next phase and expected files.
+
+The WorkBuddy expert team can call large models freely. The scripts therefore
+do not try to replace every expert judgment with deterministic code. They
+provide the file contracts, validation, persistence, and report publishing
+around the expert outputs.
+
+## Phases
+
+Verify yesterday's predictions:
+
+```powershell
+py scripts\daily_workbuddy_run.py --phase verify --date YYYY-MM-DD
+```
+
+Generate or register today's predictions:
+
+```powershell
+py scripts\daily_workbuddy_run.py --phase predict --date YYYY-MM-DD
+```
+
+Publish the daily briefing report:
+
+```powershell
+py scripts\daily_workbuddy_run.py --phase report --date YYYY-MM-DD
+```
+
+Use `--metals AL,CU,NI` to limit the metal set. Use `--json-only` when another
+tool only needs the machine-readable manifest.
+
+## Runtime Directories
+
+```text
+.workbuddy/memory/
+  prices/                         # cached spot prices
+  signals/                        # expert signal extraction output
+  model_outputs/
+    bias_review/                  # miss-analysis JSON written by risk-control
+    predictions/                  # prediction JSON written by metals-analyst
+  backtest/
+    alerts/
+    learnings/
+    predictions/
+    results/
+  reports/
+    latest/
+    data/
+      snapshots/
+```
+
+Only `.gitkeep` files should remain in these folders in a clean project checkout.
+
+## Key File Contracts
+
+Price cache:
+
+```text
+.workbuddy/memory/prices/{METAL}_{YYYY-MM-DD}.json
+```
+
+Registered D+1 prediction:
+
+```text
+.workbuddy/memory/backtest/predictions/{METAL}_{YYYY-MM-DD}_1d.json
+```
+
+Backtest result:
+
+```text
+.workbuddy/memory/backtest/results/{METAL}_{YYYY-MM-DD}_1d.json
+```
+
+Bias review output:
+
+```text
+.workbuddy/memory/model_outputs/bias_review/{METAL}_{YYYY-MM-DD}.json
+```
+
+External prediction output:
+
+```text
+.workbuddy/memory/model_outputs/predictions/{METAL}_{YYYY-MM-DD}.json
+```
+
+Generated reports:
+
+```text
+.workbuddy/memory/reports/latest/{REPORT_TYPE}_{TOPIC}.html
+.workbuddy/memory/reports/data/{REPORT_TYPE}_{TOPIC}.latest.json
+.workbuddy/memory/reports/data/snapshots/{REPORT_TYPE}_{TOPIC}_{DATE}_{REPORT_ID}_{forecast|backtest}.json
+```
+
+## Report Types
+
+Every report JSON must declare one `report_type`.
 
 | `report_type` | When to use it | Required focus |
 | --- | --- | --- |
-| `tool_price` | User asks about cutting-tool price, raw-material cost, quote risk, or purchasing timing. | Metals, D+1 outlook, tool cost impact, purchasing recommendation. |
-| `single_metal` | User asks about one metal only. | One metal's spot price, D+1 direction/range, confidence, rationale. |
-| `daily_briefing` | User asks for today's market, daily briefing, morning note, or similar. | Multi-metal spot view, news/supply-chain sections, tomorrow outlook. |
-| `weekly_briefing` | User asks for weekly/monthly summary. | Registered predictions, verified results, hit rates, and learnings. |
-| `backtest` | User asks whether a prediction was accurate, or requests a backtest/accuracy check. | Prior prediction, actual price, direction/range hit, error, bias reason. |
+| `tool_price` | Cutting-tool price, raw-material cost, quote risk, or purchasing timing | Metals, D+1 outlook, tool cost impact, purchasing recommendation |
+| `single_metal` | One metal only | Spot price, D+1 direction/range, confidence, rationale |
+| `daily_briefing` | Daily market note | Multi-metal spot view, news/supply-chain sections, tomorrow outlook |
+| `weekly_briefing` | Weekly/monthly summary | Registered predictions, verified results, hit rates, learnings |
+| `backtest` | Accuracy check | Prior prediction, actual price, direction/range hit, error, bias reason |
 
-Common fields are defined in `references/report-schema.json`. Type-specific
-content should be carried by dedicated fields such as `tool_cost_impact`,
-`recommendation`, `backtests`, and `sections`.
+The schema lives at `references/report-schema.json`.
 
-## Report storage
+## Report Publishing
 
-HTML reports are treated as generated views. Keep only the latest HTML for each
-topic, and keep historical records as JSON snapshots:
-
-```text
-.workbuddy/memory/reports/
-  index.html
-  latest/
-    {REPORT_TYPE}_{TOPIC}.html
-  data/
-    {REPORT_TYPE}_{TOPIC}.latest.json
-    snapshots/
-      {REPORT_TYPE}_{TOPIC}_{prediction_date}_{report_id}_forecast.json
-      {REPORT_TYPE}_{TOPIC}_{actual_date}_{report_id}_backtest.json
-```
-
-Storage rules:
-
-1. Latest HTML is written to `.workbuddy/memory/reports/latest/{REPORT_TYPE}_{TOPIC}.html` and may be overwritten.
-2. Latest structured JSON is written to `.workbuddy/memory/reports/data/{REPORT_TYPE}_{TOPIC}.latest.json` and may be overwritten.
-3. Forecast snapshots are written to `.workbuddy/memory/reports/data/snapshots/{REPORT_TYPE}_{TOPIC}_{prediction_date}_{report_id}_forecast.json`.
-4. Backtest snapshots are written to `.workbuddy/memory/reports/data/snapshots/{REPORT_TYPE}_{TOPIC}_{actual_date}_{report_id}_backtest.json`.
-5. JSON should carry explicit date fields such as `prediction_date`, `target_date`, `actual_date`, and `updated_at` when applicable.
-
-## HTML report generation
-
-Route B is implemented as a small static publishing pipeline:
-
-1. The agent produces a report JSON matching `references/report-schema.json`.
-2. The agent immediately runs `scripts/build_html_report.py` for that JSON.
-3. The same script writes latest JSON, writes one snapshot, and refreshes `.workbuddy/memory/reports/index.html`.
-4. When `%USERPROFILE%\WorkBuddy` exists, the script also refreshes the root
-   WorkBuddy `index.html` and each report task folder's local `index.html`, so
-   reports opened from WorkBuddy task folders can return to a complete report
-   center.
-5. The agent sends the Markdown links printed under `Chat links:` back to the user, so the user can choose which HTML page to open.
-
-Generate a report from an agent-produced JSON file:
+Build an HTML report from a valid report JSON:
 
 ```powershell
 py scripts\build_html_report.py path\to\report.json
 ```
 
-If you are rebuilding only the repository report center and do not want to
-touch WorkBuddy's artifact folder, pass:
+If you do not want to refresh `%USERPROFILE%\WorkBuddy`, pass:
 
 ```powershell
 py scripts\build_html_report.py path\to\report.json --no-workbuddy-index
 ```
 
-Open:
+## Validation
 
-```text
-.workbuddy/memory/reports/index.html
-.workbuddy/memory/reports/latest/{REPORT_TYPE}_{TOPIC}.html
+Run local smoke checks without touching real `.workbuddy` state:
+
+```powershell
+py -B scripts\validate_closed_loop.py
 ```
 
-When a chat response includes a generated report, include both links:
-
-```markdown
-- Open this report: [tool_price_CU.html](D:/Junepj/tool/.workbuddy/memory/reports/latest/tool_price_CU.html)
-- Open report index: [index.html](D:/Junepj/tool/.workbuddy/memory/reports/index.html)
-```
+The validation patches all runtime paths into a temporary directory, so it is
+safe to run in a clean project checkout.

@@ -136,6 +136,21 @@ def _validate_report(report: dict[str, Any], rtype: str) -> list[str]:
             for i, bt in enumerate(backtests):
                 if not isinstance(bt, dict):
                     errors.append("backtests[%d] must be an object" % i)
+    # yesterday_review — required by schema for tool_price and daily_briefing
+    yr = report.get("yesterday_review")
+    if rtype in ("tool_price", "daily_briefing"):
+        if not isinstance(yr, dict):
+            errors.append("yesterday_review is required for %s reports and must be an object" % rtype)
+        else:
+            for fld in ("headline", "summary"):
+                if not isinstance(yr.get(fld), str) or not str(yr.get(fld)).strip():
+                    errors.append("yesterday_review.%s must be a non-empty string" % fld)
+            yr_backtests = yr.get("backtests")
+            if not isinstance(yr_backtests, list):
+                errors.append("yesterday_review.backtests must be an array")
+            yr_learnings = yr.get("learnings_written")
+            if not isinstance(yr_learnings, list):
+                errors.append("yesterday_review.learnings_written must be an array")
     return errors
 
 
@@ -386,7 +401,50 @@ REPORT_TEMPLATE = r"""<!doctype html>
         ["hit_direction", "Direction Hit"],
         ["hit_range", "Range Hit"],
         ["bias_reason", "Bias Reason"],
+        ["next_adjustment", "Next Adjustment"],
       ]));
+    };
+    const yesterdayReviewPanel = () => {
+      const yr = report.yesterday_review;
+      if (!yr || typeof yr !== "object") return "";
+      const backtests = Array.isArray(yr.backtests) ? yr.backtests : [];
+      const total = backtests.length;
+      const hits = backtests.filter((bt) => bt.hit_direction).length;
+      const hitRate = total > 0 ? ((hits / total) * 100).toFixed(1) : "0.0";
+      const hitClass = total > 0 && hits / total >= 0.5 ? "" : "missed";
+      let body = `
+        <div style="background:#fffbeb;border-left:4px solid #f59e0b;padding:14px 18px;border-radius:6px;margin-bottom:16px;">
+          <div style="font-size:20px;font-weight:700;color:#92400e;margin-bottom:6px;">${escapeHtml(yr.headline || "")}</div>
+          <div style="font-size:15px;color:#657181;">方向命中率：<strong style="font-size:22px;" class="pill ${hitClass}">${hitRate}%</strong> &nbsp;（${hits}/${total}）</div>
+        </div>
+      `;
+      if (yr.summary) {
+        body += `<p style="font-size:15px;line-height:1.7;">${escapeHtml(yr.summary)}</p>`;
+      }
+      if (Array.isArray(yr.learnings_written) && yr.learnings_written.length > 0) {
+        body += `<h3>经验记录</h3><ul>${yr.learnings_written.map((l) => `<li>${escapeHtml(typeof l === "string" ? l : JSON.stringify(l))}</li>`).join("")}</ul>`;
+      }
+      if (backtests.length > 0) {
+        body += `<h3>逐项复核</h3>
+        <table>
+          <thead><tr>
+            <th>品种</th><th>预测方向</th><th>实际方向</th><th>命中</th><th>偏差原因</th><th>调整规则</th>
+          </tr></thead>
+          <tbody>
+            ${backtests.map((bt) => `
+              <tr>
+                <td><strong>${escapeHtml(bt.metal || "")}</strong></td>
+                <td><span class="pill ${escapeHtml(bt.predicted_direction || "")}">${escapeHtml(bt.predicted_direction || "")}</span></td>
+                <td><span class="pill ${escapeHtml(bt.actual_direction || "")}">${escapeHtml(bt.actual_direction || "")}</span></td>
+                <td><span class="pill ${bt.hit_direction ? "" : "missed"}">${bt.hit_direction ? "✓ 命中" : "✗ 未中"}</span></td>
+                <td>${escapeHtml(bt.bias_reason || "")}</td>
+                <td>${escapeHtml(bt.next_adjustment || "")}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>`;
+      }
+      return panel("昨日预测复盘", body, 12);
     };
     const sectionsPanel = () => {
       if (!Array.isArray(report.sections) || report.sections.length === 0) return "";
@@ -404,7 +462,8 @@ REPORT_TEMPLATE = r"""<!doctype html>
     };
     const type = report.report_type || "tool_price";
     const typeDescription = reportTypes[type]?.description || "";
-    let body = panel("Report Type", `<p>${escapeHtml(typeDescription)}</p>`, 12);
+    let body = yesterdayReviewPanel();
+    body += panel("Report Type", `<p>${escapeHtml(typeDescription)}</p>`, 12);
     if (type === "tool_price") {
       body += panel("Metal Signals", metalTable(), report.tool_cost_impact ? 7 : 12);
       body += costPanel();

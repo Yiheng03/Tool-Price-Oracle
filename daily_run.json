@@ -1,0 +1,28 @@
+{
+  "metals": ["AL", "CU", "SN", "NI", "CO", "W", "ZN", "PB", "IRON_ORE"],
+  "default_flat_threshold": 0.005,
+  "price_source_priority": ["100ppi", "smm", "manual_cache"],
+  "report_type": "daily_briefing",
+  "require_yesterday_review_first": true,
+  "prediction": {
+    "horizon_days": 1,
+    "save_records": true,
+    "save_learnings": true,
+    "learnings_file": ".workbuddy/memory/learnings/learnings.json"
+  },
+  "backtest": {
+    "enabled": true,
+    "auto_write_results": true,
+    "alert_thresholds": {
+      "direction_miss_streak_warn": 3,
+      "direction_miss_streak_critical": 5,
+      "mape_warn_pct": 10.0,
+      "mape_critical_pct": 15.0
+    }
+  },
+  "report": {
+    "output_dir": ".workbuddy/memory/reports",
+    "build_html": true,
+    "refresh_index": true
+  }
+}
