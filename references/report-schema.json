@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cutting Tool Price Oracle Report",
+  "type": "object",
+  "required": ["report_id", "date", "title", "summary", "metals", "tool_cost_impact", "recommendation"],
+  "properties": {
+    "report_id": {
+      "type": "string",
+      "description": "Stable report id. File storage uses the metal topic plus forecast/backtest date, so this does not need to contain every update date."
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Primary report date, usually the forecast/prediction date."
+    },
+    "prediction_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "target_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "actual_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "updated_at": {
+      "type": "string",
+      "description": "ISO timestamp for the latest report update."
+    },
+    "title": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "metals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "name", "spot_price", "unit", "direction", "range_pct", "confidence", "rationale"],
+        "properties": {
+          "code": { "type": "string" },
+          "name": { "type": "string" },
+          "spot_price": { "type": "number" },
+          "unit": { "type": "string" },
+          "source": { "type": "string" },
+          "direction": { "type": "string", "enum": ["up", "down", "flat", "volatile"] },
+          "range_pct": {
+            "type": "array",
+            "prefixItems": [{ "type": "number" }, { "type": "number" }],
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "confidence": { "type": "string" },
+          "rationale": { "type": "string" }
+        }
+      }
+    },
+    "tool_cost_impact": {
+      "type": "object",
+      "required": ["tool_spec", "base_cost", "next_day_low", "next_day_high", "main_driver"],
+      "properties": {
+        "tool_spec": { "type": "string" },
+        "base_cost": { "type": "number" },
+        "currency": { "type": "string" },
+        "next_day_low": { "type": "number" },
+        "next_day_high": { "type": "number" },
+        "main_driver": { "type": "string" }
+      }
+    },
+    "recommendation": {
+      "type": "object",
+      "required": ["action", "reason", "risk_level"],
+      "properties": {
+        "action": { "type": "string" },
+        "reason": { "type": "string" },
+        "risk_level": { "type": "string" }
+      }
+    },
+    "json_payload": {
+      "type": "object",
+      "description": "Optional raw agent output or extra structured fields."
+    }
+  }
+}

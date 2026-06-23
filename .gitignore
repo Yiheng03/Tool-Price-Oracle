@@ -6,3 +6,6 @@
 !.workbuddy/memory/backtest/learnings/.gitkeep
 !.workbuddy/memory/backtest/predictions/.gitkeep
 !.workbuddy/memory/backtest/results/.gitkeep
+.workbuddy/memory/reports/*
+__pycache__/
+*.pyc
