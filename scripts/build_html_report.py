@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build standalone HTML reports and a static report index from report JSON."""
+"""Build typed standalone HTML reports and a static report index from report JSON."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +17,34 @@ REPORT_DIR = ROOT / ".workbuddy" / "memory" / "reports"
 LATEST_DIR = REPORT_DIR / "latest"
 DATA_DIR = REPORT_DIR / "data"
 SNAPSHOT_DIR = DATA_DIR / "snapshots"
+
+REPORT_TYPES = {
+    "tool_price": {
+        "label": "Tool price and purchasing",
+        "snapshot": "forecast",
+        "description": "Full cutting-tool raw material, cost impact, and purchasing action report.",
+    },
+    "single_metal": {
+        "label": "Single metal outlook",
+        "snapshot": "forecast",
+        "description": "One target metal with spot price, D+1 direction, range, and rationale.",
+    },
+    "daily_briefing": {
+        "label": "Daily metal briefing",
+        "snapshot": "forecast",
+        "description": "Daily multi-metal market briefing with news, supply chain, and next-day view.",
+    },
+    "weekly_briefing": {
+        "label": "Weekly metal briefing",
+        "snapshot": "forecast",
+        "description": "Weekly summary of registered one-day predictions, results, and learnings.",
+    },
+    "backtest": {
+        "label": "Prediction backtest",
+        "snapshot": "backtest",
+        "description": "D+1 verification report for prior predictions and bias learnings.",
+    },
+}
 
 
 REPORT_TEMPLATE = r"""<!doctype html>
@@ -51,6 +80,7 @@ REPORT_TEMPLATE = r"""<!doctype html>
     main { padding: 24px min(5vw, 56px) 44px; }
     h1 { margin: 0 0 8px; font-size: 28px; line-height: 1.2; letter-spacing: 0; }
     h2 { margin: 0 0 14px; font-size: 17px; letter-spacing: 0; }
+    h3 { margin: 16px 0 8px; font-size: 15px; letter-spacing: 0; }
     p { line-height: 1.6; }
     .meta, .muted { color: var(--muted); }
     .grid {
@@ -100,6 +130,8 @@ REPORT_TEMPLATE = r"""<!doctype html>
     }
     th { color: var(--muted); font-weight: 650; }
     tr:last-child td { border-bottom: 0; }
+    ul { margin: 8px 0 0; padding-left: 20px; }
+    li { margin: 6px 0; line-height: 1.5; }
     .pill {
       display: inline-flex;
       align-items: center;
@@ -111,9 +143,9 @@ REPORT_TEMPLATE = r"""<!doctype html>
       font-size: 13px;
       font-weight: 650;
     }
-    .pill.down { background: #fef2f2; color: var(--danger); }
-    .pill.flat { background: #eef2f7; color: #475569; }
-    .pill.volatile { background: #fff7ed; color: var(--accent-2); }
+    .pill.down, .pill.missed, .pill.high { background: #fef2f2; color: var(--danger); }
+    .pill.flat, .pill.medium { background: #eef2f7; color: #475569; }
+    .pill.volatile, .pill.partial { background: #fff7ed; color: var(--accent-2); }
     .actions {
       display: flex;
       gap: 10px;
@@ -154,7 +186,7 @@ REPORT_TEMPLATE = r"""<!doctype html>
 </head>
 <body>
   <header>
-    <div class="meta">__DATE__ · __REPORT_ID__</div>
+    <div class="meta">__TYPE_LABEL__ / __DATE__ / __REPORT_ID__</div>
     <h1>__TITLE__</h1>
     <p>__SUMMARY__</p>
     <div class="actions">
@@ -163,69 +195,146 @@ REPORT_TEMPLATE = r"""<!doctype html>
       <button id="toggle-json">Show JSON</button>
     </div>
   </header>
-  <main class="grid">
-    <section class="panel span-7">
-      <h2>Metal Signals</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Metal</th>
-            <th>Spot</th>
-            <th>D+1</th>
-            <th>Range</th>
-            <th>Confidence</th>
-            <th>Rationale</th>
-          </tr>
-        </thead>
-        <tbody id="metal-rows"></tbody>
-      </table>
-    </section>
-    <section class="panel span-5">
-      <h2>Tool Cost Impact</h2>
-      <p class="muted" id="tool-spec"></p>
-      <div class="metric">
-        <div><span class="muted">Base</span><strong id="base-cost"></strong></div>
-        <div><span class="muted">Low</span><strong id="low-cost"></strong></div>
-        <div><span class="muted">High</span><strong id="high-cost"></strong></div>
-      </div>
-      <p><strong>Main driver:</strong> <span id="main-driver"></span></p>
-    </section>
-    <section class="panel span-12">
-      <h2>Recommendation</h2>
-      <p><span class="pill" id="risk-level"></span></p>
-      <p><strong id="action"></strong></p>
-      <p class="muted" id="reason"></p>
-    </section>
-    <section class="panel span-12" id="json-panel" hidden>
-      <h2>Embedded JSON</h2>
-      <pre id="json-view"></pre>
-    </section>
-  </main>
+  <main class="grid" id="report-root"></main>
   <script type="application/json" id="report-data">__REPORT_JSON__</script>
   <script>
     const report = JSON.parse(document.getElementById("report-data").textContent);
-    const fmtPct = ([a, b]) => `${(a * 100).toFixed(2)}% to ${(b * 100).toFixed(2)}%`;
-    const fmtMoney = (value, currency = "") => `${currency} ${Number(value).toFixed(2)}`.trim();
-    const rows = document.getElementById("metal-rows");
-    rows.innerHTML = report.metals.map((metal) => `
-      <tr>
-        <td><strong>${metal.code}</strong><br><span class="muted">${metal.name}</span></td>
-        <td>${Number(metal.spot_price).toLocaleString()}<br><span class="muted">${metal.unit}</span></td>
-        <td><span class="pill ${metal.direction}">${metal.direction}</span></td>
-        <td>${fmtPct(metal.range_pct)}</td>
-        <td>${metal.confidence}</td>
-        <td>${metal.rationale}</td>
-      </tr>
+    const root = document.getElementById("report-root");
+    const reportTypes = __REPORT_TYPES_JSON__;
+    const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[ch]));
+    const fmtPct = (range) => {
+      if (!Array.isArray(range) || range.length < 2) return "";
+      return `${(Number(range[0]) * 100).toFixed(2)}% to ${(Number(range[1]) * 100).toFixed(2)}%`;
+    };
+    const fmtMoney = (value, currency = "") => {
+      if (value === undefined || value === null || value === "") return "";
+      return `${currency} ${Number(value).toFixed(2)}`.trim();
+    };
+    const panel = (title, body, span = 12) => `
+      <section class="panel span-${span}">
+        <h2>${escapeHtml(title)}</h2>
+        ${body}
+      </section>
+    `;
+    const rows = (items, columns) => items.map((item) => `
+      <tr>${columns.map(([key]) => `<td>${escapeHtml(item?.[key] ?? "")}</td>`).join("")}</tr>
     `).join("");
-    const impact = report.tool_cost_impact;
-    document.getElementById("tool-spec").textContent = impact.tool_spec;
-    document.getElementById("base-cost").textContent = fmtMoney(impact.base_cost, impact.currency);
-    document.getElementById("low-cost").textContent = fmtMoney(impact.next_day_low, impact.currency);
-    document.getElementById("high-cost").textContent = fmtMoney(impact.next_day_high, impact.currency);
-    document.getElementById("main-driver").textContent = impact.main_driver;
-    document.getElementById("risk-level").textContent = report.recommendation.risk_level;
-    document.getElementById("action").textContent = report.recommendation.action;
-    document.getElementById("reason").textContent = report.recommendation.reason;
+    const table = (items, columns) => {
+      if (!Array.isArray(items) || items.length === 0) return '<p class="muted">No entries.</p>';
+      return `
+        <table>
+          <thead><tr>${columns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("")}</tr></thead>
+          <tbody>${rows(items, columns)}</tbody>
+        </table>
+      `;
+    };
+    const metalTable = () => {
+      const metals = report.metals || [];
+      if (!Array.isArray(metals) || metals.length === 0) return '<p class="muted">No entries.</p>';
+      return `
+        <table>
+          <thead>
+            <tr>
+              <th>Metal</th>
+              <th>Spot</th>
+              <th>D+1</th>
+              <th>Range</th>
+              <th>Confidence</th>
+              <th>Rationale</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${metals.map((metal) => `
+              <tr>
+                <td><strong>${escapeHtml(metal.code)}</strong><br><span class="muted">${escapeHtml(metal.name)}</span></td>
+                <td>${escapeHtml(Number(metal.spot_price).toLocaleString())}<br><span class="muted">${escapeHtml(metal.unit)}</span></td>
+                <td><span class="pill ${escapeHtml(metal.direction)}">${escapeHtml(metal.direction)}</span></td>
+                <td>${escapeHtml(fmtPct(metal.range_pct))}</td>
+                <td>${escapeHtml(metal.confidence)}</td>
+                <td>${escapeHtml(metal.rationale)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    };
+    const recommendationPanel = () => {
+      if (!report.recommendation) return "";
+      return panel("Recommendation", `
+        <p><span class="pill ${escapeHtml(report.recommendation.risk_level)}">${escapeHtml(report.recommendation.risk_level)}</span></p>
+        <p><strong>${escapeHtml(report.recommendation.action)}</strong></p>
+        <p class="muted">${escapeHtml(report.recommendation.reason)}</p>
+      `);
+    };
+    const costPanel = () => {
+      const impact = report.tool_cost_impact;
+      if (!impact) return "";
+      return panel("Tool Cost Impact", `
+        <p class="muted">${escapeHtml(impact.tool_spec)}</p>
+        <div class="metric">
+          <div><span class="muted">Base</span><strong>${escapeHtml(fmtMoney(impact.base_cost, impact.currency))}</strong></div>
+          <div><span class="muted">Low</span><strong>${escapeHtml(fmtMoney(impact.next_day_low, impact.currency))}</strong></div>
+          <div><span class="muted">High</span><strong>${escapeHtml(fmtMoney(impact.next_day_high, impact.currency))}</strong></div>
+        </div>
+        <p><strong>Main driver:</strong> ${escapeHtml(impact.main_driver)}</p>
+      `, 5);
+    };
+    const backtestPanel = () => {
+      const yesterday = report.json_payload?.yesterday_backtest;
+      const items = report.backtests || report.json_payload?.backtests || (yesterday ? [yesterday] : []);
+      if (!Array.isArray(items) || items.length === 0) return "";
+      return panel("Backtest Results", table(items, [
+        ["metal", "Metal"],
+        ["prediction_date", "Prediction Date"],
+        ["actual_date", "Actual Date"],
+        ["predicted_direction", "Predicted"],
+        ["actual_direction", "Actual"],
+        ["hit_direction", "Direction Hit"],
+        ["hit_range", "Range Hit"],
+        ["bias_reason", "Bias Reason"],
+      ]));
+    };
+    const sectionsPanel = () => {
+      if (!Array.isArray(report.sections) || report.sections.length === 0) return "";
+      return report.sections.map((section) => {
+        let body = "";
+        if (section.body) body += `<p>${escapeHtml(section.body)}</p>`;
+        if (Array.isArray(section.items)) {
+          body += `<ul>${section.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+        }
+        if (Array.isArray(section.rows) && Array.isArray(section.columns)) {
+          body += table(section.rows, section.columns.map((col) => [col.key, col.label || col.key]));
+        }
+        return panel(section.title || "Details", body || '<p class="muted">No details.</p>');
+      }).join("");
+    };
+    const type = report.report_type || "tool_price";
+    const typeDescription = reportTypes[type]?.description || "";
+    let body = panel("Report Type", `<p>${escapeHtml(typeDescription)}</p>`, 12);
+    if (type === "tool_price") {
+      body += panel("Metal Signals", metalTable(), report.tool_cost_impact ? 7 : 12);
+      body += costPanel();
+      body += recommendationPanel();
+    } else if (type === "single_metal") {
+      body += panel("Single Metal Outlook", metalTable(), 12);
+      body += recommendationPanel();
+    } else if (type === "daily_briefing" || type === "weekly_briefing") {
+      body += panel("Metal Briefing", metalTable(), 12);
+      body += sectionsPanel();
+      body += recommendationPanel();
+    } else if (type === "backtest") {
+      body += backtestPanel();
+      body += sectionsPanel();
+      body += recommendationPanel();
+    } else {
+      body += panel("Metal Signals", metalTable(), 12);
+      body += sectionsPanel();
+      body += recommendationPanel();
+    }
+    body += panel("Embedded JSON", '<pre id="json-view"></pre>', 12).replace('<section', '<section id="json-panel" hidden');
+    root.innerHTML = body;
     document.getElementById("json-view").textContent = JSON.stringify(report, null, 2);
     document.getElementById("toggle-json").addEventListener("click", () => {
       const panel = document.getElementById("json-panel");
@@ -332,8 +441,8 @@ INDEX_TEMPLATE = r"""<!doctype html>
 <body>
   <header>
     <h1>Tool Price Report Center</h1>
-    <p>Static index generated from JSON reports. Open an HTML report, inspect the embedded JSON, or download the source JSON from each report page.</p>
-    <input id="filter" type="search" placeholder="Filter by title, date, metal, action, or risk level">
+    <p>Static index generated from typed JSON reports. Open an HTML report, inspect the embedded JSON, or download the source JSON from each report page.</p>
+    <input id="filter" type="search" placeholder="Filter by type, title, date, metal, action, or risk level">
   </header>
   <main>
     <table id="reports">
@@ -341,6 +450,7 @@ INDEX_TEMPLATE = r"""<!doctype html>
         <tr>
           <th>Report Date</th>
           <th>Updated</th>
+          <th>Type</th>
           <th>Title</th>
           <th>Metals</th>
           <th>Recommendation</th>
@@ -357,18 +467,22 @@ INDEX_TEMPLATE = r"""<!doctype html>
     const reports = JSON.parse(document.getElementById("report-index").textContent);
     const tbody = document.querySelector("#reports tbody");
     const empty = document.getElementById("empty");
+    const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[ch]));
     function render(filter = "") {
       const needle = filter.trim().toLowerCase();
       const filtered = reports.filter((item) => JSON.stringify(item).toLowerCase().includes(needle));
       tbody.innerHTML = filtered.map((item) => `
         <tr>
-          <td data-label="Report Date">${item.date}</td>
-          <td data-label="Updated">${item.updated_at || ""}</td>
-          <td data-label="Title"><strong>${item.title}</strong><br><span class="muted">${item.report_id}</span></td>
-          <td data-label="Metals">${item.metals.join(", ")}</td>
-          <td data-label="Recommendation">${item.action}</td>
-          <td data-label="Risk">${item.risk_level}</td>
-          <td data-label="Open"><a href="${item.html_file}">Open report</a><br><a class="muted" href="${item.json_file}">Source JSON</a></td>
+          <td data-label="Report Date">${escapeHtml(item.date)}</td>
+          <td data-label="Updated">${escapeHtml(item.updated_at || "")}</td>
+          <td data-label="Type">${escapeHtml(item.report_type_label)}</td>
+          <td data-label="Title"><strong>${escapeHtml(item.title)}</strong><br><span class="muted">${escapeHtml(item.report_id)}</span></td>
+          <td data-label="Metals">${escapeHtml(item.metals.join(", "))}</td>
+          <td data-label="Recommendation">${escapeHtml(item.action)}</td>
+          <td data-label="Risk">${escapeHtml(item.risk_level)}</td>
+          <td data-label="Open"><a href="${escapeHtml(item.html_file)}">Open report</a><br><a class="muted" href="${escapeHtml(item.json_file)}">Source JSON</a></td>
         </tr>
       `).join("");
       empty.hidden = filtered.length > 0;
@@ -382,16 +496,38 @@ INDEX_TEMPLATE = r"""<!doctype html>
 """
 
 
-def load_report(path: Path) -> dict:
+def report_type(report: dict[str, Any]) -> str:
+    value = str(report.get("report_type") or "").strip()
+    if value in REPORT_TYPES:
+        return value
+    if is_backtest_report(report):
+        return "backtest"
+    if len(report.get("metals", [])) == 1 and not report.get("tool_cost_impact"):
+        return "single_metal"
+    return "tool_price"
+
+
+def load_report(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         report = json.load(handle)
     missing = [
         key
-        for key in ("report_id", "date", "title", "summary", "metals", "tool_cost_impact", "recommendation")
+        for key in ("report_id", "date", "title", "summary", "metals")
         if key not in report
     ]
     if missing:
         raise ValueError(f"{path} is missing required keys: {', '.join(missing)}")
+    rtype = report_type(report)
+    if rtype == "tool_price":
+        for key in ("tool_cost_impact", "recommendation"):
+            if key not in report:
+                raise ValueError(f"{path} is a tool_price report but is missing required key: {key}")
+    payload = report.get("json_payload", {})
+    payload_backtests = payload.get("backtests") if isinstance(payload, dict) else None
+    if rtype == "backtest" and not report.get("backtests") and not payload_backtests:
+        if not is_backtest_report(report):
+            raise ValueError(f"{path} is a backtest report but has no backtests or verified backtest payload")
+    report["report_type"] = rtype
     return report
 
 
@@ -400,22 +536,27 @@ def slugify(value: str) -> str:
     return slug or "report"
 
 
-def topic_slug(report: dict) -> str:
+def topic_slug(report: dict[str, Any]) -> str:
+    rtype = report_type(report)
     metals = [str(metal.get("code", "")).strip().upper() for metal in report.get("metals", [])]
     metals = [metal for metal in metals if metal]
     if metals:
-        return slugify("_".join(metals))
-    return slugify(str(report["report_id"]).split("_")[0])
+        return slugify(f"{rtype}_{'_'.join(metals)}")
+    return slugify(f"{rtype}_{str(report['report_id']).split('_')[0]}")
 
 
-def is_backtest_report(report: dict) -> bool:
+def is_backtest_report(report: dict[str, Any]) -> bool:
     payload = report.get("json_payload", {})
     backtest = payload.get("yesterday_backtest") if isinstance(payload, dict) else None
     return isinstance(backtest, dict) and backtest.get("status") == "verified"
 
 
-def snapshot_date(report: dict, snapshot_kind: str) -> str:
-    if snapshot_kind == "backtest":
+def snapshot_kind(report: dict[str, Any]) -> str:
+    return REPORT_TYPES[report_type(report)]["snapshot"]
+
+
+def snapshot_date(report: dict[str, Any], kind: str) -> str:
+    if kind == "backtest":
         for key in ("actual_date", "updated_date", "updated_at"):
             value = report.get(key)
             if isinstance(value, str) and value:
@@ -424,12 +565,14 @@ def snapshot_date(report: dict, snapshot_kind: str) -> str:
     return str(report["date"])[:10]
 
 
-def with_storage_metadata(report: dict, topic: str, snapshot_kind: str, snapshot_name: str) -> dict:
+def with_storage_metadata(report: dict[str, Any], topic: str, kind: str, snapshot_name: str) -> dict[str, Any]:
     enriched = dict(report)
     generated_at = datetime.now().replace(microsecond=0).isoformat()
     enriched["report_storage"] = {
         "topic": topic,
-        "snapshot_kind": snapshot_kind,
+        "report_type": report_type(report),
+        "report_type_label": REPORT_TYPES[report_type(report)]["label"],
+        "snapshot_kind": kind,
         "snapshot_file": f"snapshots/{snapshot_name}",
         "latest_json": f"{topic}.latest.json",
         "latest_html": f"../latest/{topic}.html",
@@ -438,17 +581,17 @@ def with_storage_metadata(report: dict, topic: str, snapshot_kind: str, snapshot
     return enriched
 
 
-def write_json(path: Path, data: dict) -> None:
+def write_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def persist_report_data(report: dict) -> tuple[dict, Path, Path, str]:
+def persist_report_data(report: dict[str, Any]) -> tuple[dict[str, Any], Path, Path, str]:
     topic = topic_slug(report)
-    snapshot_kind = "backtest" if is_backtest_report(report) else "forecast"
-    snap_date = snapshot_date(report, snapshot_kind)
-    snapshot_name = f"{topic}_{snap_date}_{snapshot_kind}.json"
-    enriched = with_storage_metadata(report, topic, snapshot_kind, snapshot_name)
+    kind = snapshot_kind(report)
+    snap_date = snapshot_date(report, kind)
+    snapshot_name = f"{topic}_{snap_date}_{kind}.json"
+    enriched = with_storage_metadata(report, topic, kind, snapshot_name)
     latest_json_path = DATA_DIR / f"{topic}.latest.json"
     snapshot_path = SNAPSHOT_DIR / snapshot_name
     write_json(latest_json_path, enriched)
@@ -459,16 +602,19 @@ def persist_report_data(report: dict) -> tuple[dict, Path, Path, str]:
 def build_report(json_path: Path) -> tuple[Path, Path, Path]:
     report = load_report(json_path)
     report, latest_json_path, snapshot_path, topic = persist_report_data(report)
+    rtype = report_type(report)
     report_id = slugify(report["report_id"])
     output_path = LATEST_DIR / f"{topic}.html"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     report_json = json.dumps(report, ensure_ascii=False, indent=2)
     rendered = (
         REPORT_TEMPLATE.replace("__TITLE__", html.escape(report["title"]))
+        .replace("__TYPE_LABEL__", html.escape(REPORT_TYPES[rtype]["label"]))
         .replace("__DATE__", html.escape(report["date"]))
         .replace("__REPORT_ID__", html.escape(report_id))
         .replace("__SUMMARY__", html.escape(report["summary"]))
         .replace("__REPORT_JSON__", html.escape(report_json))
+        .replace("__REPORT_TYPES_JSON__", json.dumps(REPORT_TYPES, ensure_ascii=False))
     )
     output_path.write_text(rendered, encoding="utf-8")
     return output_path, latest_json_path, snapshot_path
@@ -479,20 +625,24 @@ def build_index() -> Path:
     for json_path in sorted(DATA_DIR.glob("*.latest.json")):
         report = load_report(json_path)
         report_id = slugify(report["report_id"])
+        rtype = report_type(report)
         topic = report.get("report_storage", {}).get("topic") or topic_slug(report)
         html_path = LATEST_DIR / f"{topic}.html"
         if not html_path.exists():
             continue
         storage = report.get("report_storage", {})
+        recommendation = report.get("recommendation", {})
         reports.append(
             {
                 "report_id": report_id,
+                "report_type": rtype,
+                "report_type_label": REPORT_TYPES[rtype]["label"],
                 "date": report["date"],
                 "updated_at": str(storage.get("updated_at", ""))[:19],
                 "title": report["title"],
                 "metals": [metal["code"] for metal in report.get("metals", [])],
-                "action": report["recommendation"]["action"],
-                "risk_level": report["recommendation"]["risk_level"],
+                "action": recommendation.get("action", ""),
+                "risk_level": recommendation.get("risk_level", ""),
                 "json_file": f"data/{json_path.name}",
                 "html_file": f"latest/{html_path.name}",
             }
@@ -507,12 +657,17 @@ def build_index() -> Path:
     return output_path
 
 
+def markdown_link(path: Path, label: str) -> str:
+    return f"[{label}]({path.resolve().as_posix()})"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("json_report", nargs=1, help="Path to a report JSON file generated by the agent.")
     parser.add_argument(
-        "json_report",
-        nargs=1,
-        help="Path to a report JSON file generated by the agent.",
+        "--no-chat-links",
+        action="store_true",
+        help="Do not print Markdown links intended to be pasted into the chat.",
     )
     args = parser.parse_args()
 
@@ -539,6 +694,11 @@ def main() -> int:
     print(f"Wrote latest JSON: {latest_json_path}")
     print(f"Wrote snapshot: {snapshot_path}")
     print(f"Built index:  {index_path}")
+    if not args.no_chat_links:
+        print("")
+        print("Chat links:")
+        print(f"- Open this report: {markdown_link(report_path, report_path.name)}")
+        print(f"- Open report index: {markdown_link(index_path, 'index.html')}")
     return 0
 
 

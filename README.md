@@ -9,6 +9,23 @@ Current workflow:
 5. Store the record as `.workbuddy/memory/backtest/predictions/{METAL}_{YYYY-MM-DD}_1d.json`.
 6. On D+1, fetch the actual spot price, calculate actual movement, verify direction/range hit, explain misses, and append learnings.
 
+## Report types
+
+Every report JSON must declare one `report_type`. Different report types are
+stored and rendered separately so their content is not forced into one layout.
+
+| `report_type` | When to use it | Required focus |
+| --- | --- | --- |
+| `tool_price` | User asks about cutting-tool price, raw-material cost, quote risk, or purchasing timing. | Metals, D+1 outlook, tool cost impact, purchasing recommendation. |
+| `single_metal` | User asks about one metal only. | One metal's spot price, D+1 direction/range, confidence, rationale. |
+| `daily_briefing` | User asks for today's market, daily briefing, morning note, or similar. | Multi-metal spot view, news/supply-chain sections, tomorrow outlook. |
+| `weekly_briefing` | User asks for weekly/monthly summary. | Registered predictions, verified results, hit rates, and learnings. |
+| `backtest` | User asks whether a prediction was accurate, or requests a backtest/accuracy check. | Prior prediction, actual price, direction/range hit, error, bias reason. |
+
+Common fields are defined in `references/report-schema.json`. Type-specific
+content should be carried by dedicated fields such as `tool_cost_impact`,
+`recommendation`, `backtests`, and `sections`.
+
 ## Report storage
 
 HTML reports are treated as generated views. Keep only the latest HTML for each
@@ -18,29 +35,30 @@ topic, and keep historical records as JSON snapshots:
 .workbuddy/memory/reports/
   index.html
   latest/
-    {TOPIC}.html
+    {REPORT_TYPE}_{TOPIC}.html
   data/
-    {TOPIC}.latest.json
+    {REPORT_TYPE}_{TOPIC}.latest.json
     snapshots/
-      {TOPIC}_{prediction_date}_forecast.json
-      {TOPIC}_{actual_date}_backtest.json
+      {REPORT_TYPE}_{TOPIC}_{prediction_date}_forecast.json
+      {REPORT_TYPE}_{TOPIC}_{actual_date}_backtest.json
 ```
 
 Storage rules:
 
-1. Latest HTML is written to `.workbuddy/memory/reports/latest/{TOPIC}.html` and may be overwritten.
-2. Latest structured JSON is written to `.workbuddy/memory/reports/data/{TOPIC}.latest.json` and may be overwritten.
-3. Forecast snapshots are written to `.workbuddy/memory/reports/data/snapshots/{TOPIC}_{prediction_date}_forecast.json`.
-4. Backtest snapshots are written to `.workbuddy/memory/reports/data/snapshots/{TOPIC}_{actual_date}_backtest.json`.
+1. Latest HTML is written to `.workbuddy/memory/reports/latest/{REPORT_TYPE}_{TOPIC}.html` and may be overwritten.
+2. Latest structured JSON is written to `.workbuddy/memory/reports/data/{REPORT_TYPE}_{TOPIC}.latest.json` and may be overwritten.
+3. Forecast snapshots are written to `.workbuddy/memory/reports/data/snapshots/{REPORT_TYPE}_{TOPIC}_{prediction_date}_forecast.json`.
+4. Backtest snapshots are written to `.workbuddy/memory/reports/data/snapshots/{REPORT_TYPE}_{TOPIC}_{actual_date}_backtest.json`.
 5. JSON should carry explicit date fields such as `prediction_date`, `target_date`, `actual_date`, and `updated_at` when applicable.
 
 ## HTML report generation
 
-Route B is implemented as a small static pipeline:
+Route B is implemented as a small static publishing pipeline:
 
 1. The agent produces a report JSON matching `references/report-schema.json`.
-2. `scripts/build_html_report.py` embeds that JSON into the topic's latest HTML.
+2. The agent immediately runs `scripts/build_html_report.py` for that JSON.
 3. The same script writes latest JSON, writes one snapshot, and refreshes `.workbuddy/memory/reports/index.html`.
+4. The agent sends the Markdown links printed under `Chat links:` back to the user, so the user can choose which HTML page to open.
 
 Generate a report from an agent-produced JSON file:
 
@@ -52,5 +70,12 @@ Open:
 
 ```text
 .workbuddy/memory/reports/index.html
-.workbuddy/memory/reports/latest/{TOPIC}.html
+.workbuddy/memory/reports/latest/{REPORT_TYPE}_{TOPIC}.html
+```
+
+When a chat response includes a generated report, include both links:
+
+```markdown
+- Open this report: [tool_price_CU.html](D:/Junepj/tool/.workbuddy/memory/reports/latest/tool_price_CU.html)
+- Open report index: [index.html](D:/Junepj/tool/.workbuddy/memory/reports/index.html)
 ```

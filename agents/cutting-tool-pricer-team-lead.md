@@ -123,3 +123,23 @@ next-day-volatility-tracker.tomorrow_verify
 ### 采购策略
 {锁价/观望/分批等明确建议}
 ```
+## Report publishing contract
+
+After producing any final structured report, write a JSON file that conforms to
+`references/report-schema.json` and set exactly one `report_type`:
+
+- `tool_price` for cutting-tool price, raw-material cost, quote risk, or purchasing timing.
+- `single_metal` for a one-metal outlook.
+- `daily_briefing` for today's market, daily briefing, or morning note.
+- `weekly_briefing` for weekly/monthly summaries.
+- `backtest` for prediction accuracy checks and D+1 verification.
+
+Then immediately run:
+
+```powershell
+py scripts\build_html_report.py path\to\report.json
+```
+
+The final chat response must include the Markdown links printed under
+`Chat links:` so the user can choose whether to open the latest HTML report or
+the report index.

@@ -1,12 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Cutting Tool Price Oracle Report",
+  "title": "Cutting Tool Price Oracle Typed Report",
   "type": "object",
-  "required": ["report_id", "date", "title", "summary", "metals", "tool_cost_impact", "recommendation"],
+  "required": ["report_id", "report_type", "date", "title", "summary", "metals"],
   "properties": {
     "report_id": {
       "type": "string",
-      "description": "Stable report id. File storage uses the metal topic plus forecast/backtest date, so this does not need to contain every update date."
+      "description": "Stable report id. File storage uses report_type plus metal topic and forecast/backtest date."
+    },
+    "report_type": {
+      "type": "string",
+      "enum": ["tool_price", "single_metal", "daily_briefing", "weekly_briefing", "backtest"],
+      "description": "Controls validation, storage topic, HTML layout, and chat link label."
     },
     "date": {
       "type": "string",
@@ -60,6 +65,7 @@
     },
     "tool_cost_impact": {
       "type": "object",
+      "description": "Required for tool_price reports.",
       "required": ["tool_spec", "base_cost", "next_day_low", "next_day_high", "main_driver"],
       "properties": {
         "tool_spec": { "type": "string" },
@@ -72,6 +78,7 @@
     },
     "recommendation": {
       "type": "object",
+      "description": "Purchasing or risk action. Required for tool_price reports and recommended for briefing reports.",
       "required": ["action", "reason", "risk_level"],
       "properties": {
         "action": { "type": "string" },
@@ -79,9 +86,67 @@
         "risk_level": { "type": "string" }
       }
     },
+    "backtests": {
+      "type": "array",
+      "description": "Required for backtest reports unless json_payload.yesterday_backtest is verified.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "metal": { "type": "string" },
+          "prediction_date": { "type": "string" },
+          "actual_date": { "type": "string" },
+          "predicted_direction": { "type": "string" },
+          "actual_direction": { "type": "string" },
+          "hit_direction": { "type": "boolean" },
+          "hit_range": { "type": "boolean" },
+          "bias_reason": { "type": "string" }
+        }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "description": "Typed free-form report sections for news, supply chain, demand, weekly learnings, or other type-specific content.",
+      "items": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "items": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["key"],
+              "properties": {
+                "key": { "type": "string" },
+                "label": { "type": "string" }
+              }
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": { "type": "object" }
+          }
+        }
+      }
+    },
     "json_payload": {
       "type": "object",
       "description": "Optional raw agent output or extra structured fields."
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "report_type": { "const": "tool_price" } }
+      },
+      "then": {
+        "required": ["tool_cost_impact", "recommendation"]
+      }
+    }
+  ]
 }

@@ -84,3 +84,17 @@ description: Generate daily or weekly structured metal market briefings for cutt
 - 用户说“今天行情怎么样” → 日度早报。
 - 用户说“这周总结一下” → 周度简报。
 - 用户说“预测准不准” → 读取 `next-day-volatility-tracker` 的 1 日复盘结果。
+## HTML publishing
+
+For a daily briefing, write report JSON with `report_type: "daily_briefing"`.
+For a weekly or monthly briefing, write report JSON with
+`report_type: "weekly_briefing"`.
+
+After saving the JSON, run:
+
+```powershell
+py scripts\build_html_report.py path\to\report.json
+```
+
+Send the generated Markdown links from the script's `Chat links:` section back
+to the user.
