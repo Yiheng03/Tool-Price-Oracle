@@ -9,6 +9,26 @@ Current workflow:
 5. Store the record as `.workbuddy/memory/backtest/predictions/{METAL}_{YYYY-MM-DD}_1d.json`.
 6. On D+1, fetch the actual spot price, calculate actual movement, verify direction/range hit, explain misses, and append learnings.
 
+## Architecture
+
+This project combines two layers:
+
+**Executable code** (`scripts/build_html_report.py`): validates report JSON against
+`references/report-schema.json`, generates typed HTML reports, writes latest JSON and
+timestamped snapshots, and rebuilds the static report index. This is the only automated
+pipeline — run it after an agent produces a report JSON.
+
+**Agent/skill instructions** (`agents/*.md`, `skills/*/SKILL.md`): these define the
+analysis workflow (spot price fetching, multi-source validation, news scanning, supply
+chain intelligence, cost modeling, risk control, backtest registration) as LLM agent
+prompts. They are not executable scripts — a human or LLM orchestrator (e.g. WorkBuddy)
+must follow them step by step to produce the report JSON that feeds into the HTML
+pipeline.
+
+To close the automation gap, you would need to add scripts or tools that call price
+APIs, validate sources, and register backtests programmatically, rather than relying
+solely on LLM instruction-following.
+
 ## Report types
 
 Every report JSON must declare one `report_type`. Different report types are
@@ -39,16 +59,16 @@ topic, and keep historical records as JSON snapshots:
   data/
     {REPORT_TYPE}_{TOPIC}.latest.json
     snapshots/
-      {REPORT_TYPE}_{TOPIC}_{prediction_date}_forecast.json
-      {REPORT_TYPE}_{TOPIC}_{actual_date}_backtest.json
+      {REPORT_TYPE}_{TOPIC}_{prediction_date}_{report_id}_forecast.json
+      {REPORT_TYPE}_{TOPIC}_{actual_date}_{report_id}_backtest.json
 ```
 
 Storage rules:
 
 1. Latest HTML is written to `.workbuddy/memory/reports/latest/{REPORT_TYPE}_{TOPIC}.html` and may be overwritten.
 2. Latest structured JSON is written to `.workbuddy/memory/reports/data/{REPORT_TYPE}_{TOPIC}.latest.json` and may be overwritten.
-3. Forecast snapshots are written to `.workbuddy/memory/reports/data/snapshots/{REPORT_TYPE}_{TOPIC}_{prediction_date}_forecast.json`.
-4. Backtest snapshots are written to `.workbuddy/memory/reports/data/snapshots/{REPORT_TYPE}_{TOPIC}_{actual_date}_backtest.json`.
+3. Forecast snapshots are written to `.workbuddy/memory/reports/data/snapshots/{REPORT_TYPE}_{TOPIC}_{prediction_date}_{report_id}_forecast.json`.
+4. Backtest snapshots are written to `.workbuddy/memory/reports/data/snapshots/{REPORT_TYPE}_{TOPIC}_{actual_date}_{report_id}_backtest.json`.
 5. JSON should carry explicit date fields such as `prediction_date`, `target_date`, `actual_date`, and `updated_at` when applicable.
 
 ## HTML report generation

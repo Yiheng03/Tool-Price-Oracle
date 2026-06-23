@@ -13,6 +13,16 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _escape_script_json(json_str: str) -> str:
+    """Escape only </script> sequences so JSON is safe inside a <script> tag.
+
+    html.escape() must NOT be used here — in script raw text, &quot; is not
+    decoded back to \" by the browser, so JSON.parse() would fail.
+    """
+    return json_str.replace("</", "<\\/")
+
 REPORT_DIR = ROOT / ".workbuddy" / "memory" / "reports"
 LATEST_DIR = REPORT_DIR / "latest"
 DATA_DIR = REPORT_DIR / "data"
@@ -45,6 +55,88 @@ REPORT_TYPES = {
         "description": "D+1 verification report for prior predictions and bias learnings.",
     },
 }
+
+
+def _is_number(value: Any) -> bool:
+    """True if value is a JSON Schema number: int or float, but never bool."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _validate_report(report: dict[str, Any], rtype: str) -> list[str]:
+    """Validate a report dict against the schema. Returns a list of error messages."""
+    errors = []
+    # top-level required string fields
+    for key in ("report_id", "date", "title", "summary"):
+        if not isinstance(report.get(key), str) or not str(report.get(key)).strip():
+            errors.append("top-level %r must be a non-empty string" % key)
+    # date format
+    date_val = str(report.get("date", ""))
+    if date_val and not re.match(r"^\d{4}-\d{2}-\d{2}$", date_val):
+        errors.append("date must be YYYY-MM-DD format, got %r" % date_val)
+    # metals array
+    metals = report.get("metals")
+    if not isinstance(metals, list) or len(metals) == 0:
+        errors.append("metals must be a non-empty array")
+    else:
+        for i, metal in enumerate(metals):
+            if not isinstance(metal, dict):
+                errors.append("metals[%d] must be an object, got %s" % (i, type(metal).__name__))
+                continue
+            prefix = "metals[%d]" % i
+            for fld in ("code", "name", "unit", "confidence", "rationale"):
+                if not isinstance(metal.get(fld), str) or not str(metal.get(fld)).strip():
+                    errors.append("%s.%s must be a non-empty string" % (prefix, fld))
+            direction = metal.get("direction")
+            if not isinstance(direction, str) or direction not in {"up", "down", "flat", "volatile"}:
+                errors.append("%s.direction must be one of: up, down, flat, volatile" % prefix)
+            if not _is_number(metal.get("spot_price")):
+                errors.append("%s.spot_price must be a number" % prefix)
+            rng = metal.get("range_pct")
+            if not isinstance(rng, list) or len(rng) != 2 or not all(_is_number(v) for v in rng):
+                errors.append("%s.range_pct must be [number, number]" % prefix)
+    # tool_price conditional requirements
+    if rtype == "tool_price":
+        tci = report.get("tool_cost_impact")
+        if not isinstance(tci, dict):
+            errors.append("tool_cost_impact is required for tool_price reports and must be an object")
+        else:
+            for fld in ("tool_spec", "main_driver"):
+                if not isinstance(tci.get(fld), str) or not str(tci.get(fld)).strip():
+                    errors.append("tool_cost_impact.%s must be a non-empty string" % fld)
+            for fld in ("base_cost", "next_day_low", "next_day_high"):
+                if not _is_number(tci.get(fld)):
+                    errors.append("tool_cost_impact.%s must be a number" % fld)
+    # recommendation object
+    rec = report.get("recommendation")
+    if rec is not None:
+        if not isinstance(rec, dict):
+            errors.append("recommendation must be an object")
+        else:
+            for fld in ("action", "reason", "risk_level"):
+                if not isinstance(rec.get(fld), str) or not str(rec.get(fld)).strip():
+                    errors.append("recommendation.%s must be a non-empty string" % fld)
+    # sections array
+    sections = report.get("sections")
+    if sections is not None:
+        if not isinstance(sections, list):
+            errors.append("sections must be an array")
+        else:
+            for i, sec in enumerate(sections):
+                if not isinstance(sec, dict):
+                    errors.append("sections[%d] must be an object" % i)
+                    continue
+                if not isinstance(sec.get("title"), str) or not str(sec.get("title")).strip():
+                    errors.append("sections[%d].title must be a non-empty string" % i)
+    # backtests array
+    backtests = report.get("backtests")
+    if backtests is not None:
+        if not isinstance(backtests, list):
+            errors.append("backtests must be an array")
+        else:
+            for i, bt in enumerate(backtests):
+                if not isinstance(bt, dict):
+                    errors.append("backtests[%d] must be an object" % i)
+    return errors
 
 
 REPORT_TEMPLATE = r"""<!doctype html>
@@ -496,18 +588,28 @@ INDEX_TEMPLATE = r"""<!doctype html>
 """
 
 
-def report_type(report: dict[str, Any]) -> str:
+def report_type(report: dict[str, Any], *, legacy_infer_type: bool = False) -> str:
     value = str(report.get("report_type") or "").strip()
     if value in REPORT_TYPES:
         return value
-    if is_backtest_report(report):
-        return "backtest"
-    if len(report.get("metals", [])) == 1 and not report.get("tool_cost_impact"):
-        return "single_metal"
-    return "tool_price"
+    if legacy_infer_type:
+        if is_backtest_report(report):
+            return "backtest"
+        if len(report.get("metals", [])) == 1 and not report.get("tool_cost_impact"):
+            return "single_metal"
+        return "tool_price"
+    valid = ", ".join(sorted(REPORT_TYPES))
+    if not value:
+        raise ValueError(
+            f"report is missing required key: report_type. "
+            f"Valid values: {valid}"
+        )
+    raise ValueError(
+        f"unknown report_type {value!r}. Valid values: {valid}"
+    )
 
 
-def load_report(path: Path) -> dict[str, Any]:
+def load_report(path: Path, *, legacy_infer_type: bool = False) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         report = json.load(handle)
     missing = [
@@ -517,17 +619,24 @@ def load_report(path: Path) -> dict[str, Any]:
     ]
     if missing:
         raise ValueError(f"{path} is missing required keys: {', '.join(missing)}")
-    rtype = report_type(report)
-    if rtype == "tool_price":
-        for key in ("tool_cost_impact", "recommendation"):
-            if key not in report:
-                raise ValueError(f"{path} is a tool_price report but is missing required key: {key}")
+    rtype = report_type(report, legacy_infer_type=legacy_infer_type)
+    report["report_type"] = rtype
+
+    validation_errors = _validate_report(report, rtype)
+    if validation_errors:
+        raise ValueError(
+            f"{path} failed schema validation:\n  " + "\n  ".join(validation_errors)
+        )
+
     payload = report.get("json_payload", {})
     payload_backtests = payload.get("backtests") if isinstance(payload, dict) else None
-    if rtype == "backtest" and not report.get("backtests") and not payload_backtests:
-        if not is_backtest_report(report):
-            raise ValueError(f"{path} is a backtest report but has no backtests or verified backtest payload")
-    report["report_type"] = rtype
+    if rtype == "backtest" and not report.get("backtests"):
+        if not isinstance(payload_backtests, list) or len(payload_backtests) == 0:
+            if not is_backtest_report(report):
+                raise ValueError(
+                    f"{path} is a backtest report but has no backtests "
+                    f"and json_payload.backtests is not a non-empty list"
+                )
     return report
 
 
@@ -590,7 +699,8 @@ def persist_report_data(report: dict[str, Any]) -> tuple[dict[str, Any], Path, P
     topic = topic_slug(report)
     kind = snapshot_kind(report)
     snap_date = snapshot_date(report, kind)
-    snapshot_name = f"{topic}_{snap_date}_{kind}.json"
+    report_id_slug = slugify(report["report_id"])
+    snapshot_name = f"{topic}_{snap_date}_{report_id_slug}_{kind}.json"
     enriched = with_storage_metadata(report, topic, kind, snapshot_name)
     latest_json_path = DATA_DIR / f"{topic}.latest.json"
     snapshot_path = SNAPSHOT_DIR / snapshot_name
@@ -599,10 +709,10 @@ def persist_report_data(report: dict[str, Any]) -> tuple[dict[str, Any], Path, P
     return enriched, latest_json_path, snapshot_path, topic
 
 
-def build_report(json_path: Path) -> tuple[Path, Path, Path]:
-    report = load_report(json_path)
+def build_report(json_path: Path, *, legacy_infer_type: bool = False) -> tuple[Path, Path, Path]:
+    report = load_report(json_path, legacy_infer_type=legacy_infer_type)
     report, latest_json_path, snapshot_path, topic = persist_report_data(report)
-    rtype = report_type(report)
+    rtype = report_type(report, legacy_infer_type=legacy_infer_type)
     report_id = slugify(report["report_id"])
     output_path = LATEST_DIR / f"{topic}.html"
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -613,19 +723,19 @@ def build_report(json_path: Path) -> tuple[Path, Path, Path]:
         .replace("__DATE__", html.escape(report["date"]))
         .replace("__REPORT_ID__", html.escape(report_id))
         .replace("__SUMMARY__", html.escape(report["summary"]))
-        .replace("__REPORT_JSON__", html.escape(report_json))
+        .replace("__REPORT_JSON__", _escape_script_json(report_json))
         .replace("__REPORT_TYPES_JSON__", json.dumps(REPORT_TYPES, ensure_ascii=False))
     )
     output_path.write_text(rendered, encoding="utf-8")
     return output_path, latest_json_path, snapshot_path
 
 
-def build_index() -> Path:
+def build_index(*, legacy_infer_type: bool = False) -> Path:
     reports = []
     for json_path in sorted(DATA_DIR.glob("*.latest.json")):
-        report = load_report(json_path)
+        report = load_report(json_path, legacy_infer_type=legacy_infer_type)
         report_id = slugify(report["report_id"])
-        rtype = report_type(report)
+        rtype = report_type(report, legacy_infer_type=legacy_infer_type)
         topic = report.get("report_storage", {}).get("topic") or topic_slug(report)
         html_path = LATEST_DIR / f"{topic}.html"
         if not html_path.exists():
@@ -651,7 +761,7 @@ def build_index() -> Path:
     output_path = REPORT_DIR / "index.html"
     rendered = INDEX_TEMPLATE.replace(
         "__REPORTS_JSON__",
-        html.escape(json.dumps(reports, ensure_ascii=False, indent=2)),
+        _escape_script_json(json.dumps(reports, ensure_ascii=False, indent=2)),
     )
     output_path.write_text(rendered, encoding="utf-8")
     return output_path
@@ -668,6 +778,11 @@ def main() -> int:
         "--no-chat-links",
         action="store_true",
         help="Do not print Markdown links intended to be pasted into the chat.",
+    )
+    parser.add_argument(
+        "--legacy-infer-type",
+        action="store_true",
+        help="Infer report_type for legacy JSON files that lack a valid report_type field.",
     )
     args = parser.parse_args()
 
@@ -688,8 +803,8 @@ def main() -> int:
             print(f"No report JSON files found in: {REPORT_DIR}")
         print("Tip: save the agent output JSON into .workbuddy/memory/reports/ first, then pass that path to this script.")
         return 1
-    report_path, latest_json_path, snapshot_path = build_report(json_path)
-    index_path = build_index()
+    report_path, latest_json_path, snapshot_path = build_report(json_path, legacy_infer_type=args.legacy_infer_type)
+    index_path = build_index(legacy_infer_type=args.legacy_infer_type)
     print(f"Built report: {report_path}")
     print(f"Wrote latest JSON: {latest_json_path}")
     print(f"Wrote snapshot: {snapshot_path}")
