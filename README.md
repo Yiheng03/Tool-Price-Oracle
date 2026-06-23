@@ -78,12 +78,23 @@ Route B is implemented as a small static publishing pipeline:
 1. The agent produces a report JSON matching `references/report-schema.json`.
 2. The agent immediately runs `scripts/build_html_report.py` for that JSON.
 3. The same script writes latest JSON, writes one snapshot, and refreshes `.workbuddy/memory/reports/index.html`.
-4. The agent sends the Markdown links printed under `Chat links:` back to the user, so the user can choose which HTML page to open.
+4. When `%USERPROFILE%\WorkBuddy` exists, the script also refreshes the root
+   WorkBuddy `index.html` and each report task folder's local `index.html`, so
+   reports opened from WorkBuddy task folders can return to a complete report
+   center.
+5. The agent sends the Markdown links printed under `Chat links:` back to the user, so the user can choose which HTML page to open.
 
 Generate a report from an agent-produced JSON file:
 
 ```powershell
 py scripts\build_html_report.py path\to\report.json
+```
+
+If you are rebuilding only the repository report center and do not want to
+touch WorkBuddy's artifact folder, pass:
+
+```powershell
+py scripts\build_html_report.py path\to\report.json --no-workbuddy-index
 ```
 
 Open:

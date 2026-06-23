@@ -97,4 +97,5 @@ py scripts\build_html_report.py path\to\report.json
 ```
 
 Send the generated Markdown links from the script's `Chat links:` section back
-to the user.
+to the user. Do not hand-write a one-off WorkBuddy `index.html`; the script
+maintains the repository report center and WorkBuddy root/task-folder indexes.

@@ -142,4 +142,6 @@ py scripts\build_html_report.py path\to\report.json
 
 The final chat response must include the Markdown links printed under
 `Chat links:` so the user can choose whether to open the latest HTML report or
-the report index.
+the report index. Do not hand-write a one-off `index.html` in a WorkBuddy task
+folder; the script maintains the repository report center and, when available,
+the WorkBuddy root/task-folder indexes.
