@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local smoke checks for the WorkBuddy closed-loop daily workflow.
+"""Local validation checks for the WorkBuddy closed-loop daily workflow.
 
 Run from the repository root:
 
@@ -393,10 +393,14 @@ def _check_first_day_report_generation() -> None:
     assert report["yesterday_review"]["learnings_written"] == [], report
     errors = build_html_report._validate_report(report, "daily_briefing")
     assert errors == [], errors
-    report_path, index_path, json_path = daily.generate_and_publish_report(report)
+    published = daily.generate_and_publish_report(report, auto_open_html=False)
+    report_path = published["report_path"]
+    index_path = published["index_path"]
+    json_path = published["json_path"]
     assert report_path.exists(), report_path
     assert index_path.exists(), index_path
     assert json_path.exists(), json_path
+    assert published["chat_panel_files"], published
 
 
 def _check_yesterday_review_first_block() -> None:
@@ -434,14 +438,19 @@ def _check_yesterday_review_first_block() -> None:
         .replace("__SUMMARY__", html.escape(report["summary"]))
         .replace("__INDEX_HREF__", "../index.html")
         .replace("__REPORT_JSON__", build_html_report._escape_script_json(report_json))
-        .replace("__REPORT_TYPES_JSON__", json.dumps(build_html_report.REPORT_TYPES, ensure_ascii=False))
     )
     assert "const yesterdayReviewPanel = () =>" in rendered
     assert "yr.headline" in rendered
     assert "yr.summary" in rendered
     assert "yr.backtests" in rendered
     assert "yr.learnings_written" in rendered
-    assert rendered.index("let body = yesterdayReviewPanel();") < rendered.index('body += panel("Report Type"')
+    assert '<html lang="zh-CN">' in rendered
+    assert 'class="summary-grid"' in rendered
+    assert "当日金属现货与明日判断" in rendered
+    assert "昨日预测复盘" in rendered
+    assert "刀具成本影响" in rendered
+    assert "采购策略" in rendered
+    assert rendered.index('body += card("当日金属现货与明日判断"') < rendered.index("body += yesterdayReviewPanel();")
 
 
 if __name__ == "__main__":

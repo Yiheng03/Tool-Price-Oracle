@@ -109,9 +109,15 @@ For a weekly or monthly briefing, write report JSON with
 After saving the JSON, run:
 
 ```powershell
-py scripts\build_html_report.py path\to\report.json
+py scripts\build_html_report.py path\to\report.json --open-html
 ```
 
-Send the generated Markdown links from the script's `Chat links:` section back
-to the user. Do not hand-write a one-off WorkBuddy `index.html`; the script
-maintains the repository report center and WorkBuddy root/task-folder indexes.
+Publishing contract:
+
+- The publisher owns the fixed HTML page structure and visual template; only
+  report JSON content may vary between tasks.
+- The final JSON must have top-level `report_id`, `report_type`, `date`,
+  `title`, `summary`, and `metals` before running the publisher.
+- Write all report JSON and Markdown as UTF-8.
+
+Return the generated report link and HTML file path from the publisher output.

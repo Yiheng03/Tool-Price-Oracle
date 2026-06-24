@@ -70,7 +70,7 @@ def load_config() -> dict[str, Any]:
     if isinstance(raw.get("require_yesterday_review_first"), bool):
         cfg["require_yesterday_review_first"] = raw["require_yesterday_review_first"]
     # Nested sections
-    for section in ("prediction", "backtest", "report"):
+    for section in ("backtest", "report"):
         if isinstance(raw.get(section), dict):
             cfg[section].update(
                 {k: v for k, v in raw[section].items() if k in cfg[section]}
@@ -85,12 +85,6 @@ def _default_config() -> dict[str, Any]:
         "price_source_priority": ["100ppi", "smm", "manual_cache"],
         "report_type": "daily_briefing",
         "require_yesterday_review_first": True,
-        "prediction": {
-            "horizon_days": 1,
-            "save_records": True,
-            "save_learnings": True,
-            "learnings_file": ".workbuddy/memory/learnings/learnings.json",
-        },
         "backtest": {
             "enabled": True,
             "auto_write_results": True,
@@ -105,6 +99,9 @@ def _default_config() -> dict[str, Any]:
             "output_dir": ".workbuddy/memory/reports",
             "build_html": True,
             "refresh_index": True,
+            "auto_open_html": True,
+            "publish_workbuddy_sidecar": True,
+            "workbuddy_root": str(Path.home() / "WorkBuddy"),
         },
     }
 
@@ -165,11 +162,10 @@ class PredictionRecord:
     def from_dict(cls, data: dict[str, Any], source_file: str = "") -> "PredictionRecord":
         signals = _parse_signal_list(data.get("signals"))
         if not signals:
-            # Legacy: combine flat news_summary + supply_chain_summary into brief-only signals
-            legacy = _parse_str_list(data.get("news_summary")) + _parse_str_list(
+            signal_briefs = _parse_str_list(data.get("news_summary")) + _parse_str_list(
                 data.get("supply_chain_summary")
             )
-            signals = [{"brief": s} for s in legacy]
+            signals = [{"brief": s} for s in signal_briefs]
         return cls(
             metal=str(data.get("metal", "")),
             date_d=str(data.get("date_d", "")),
@@ -275,10 +271,10 @@ def _parse_str_list(value: Any) -> list[str]:
 
 
 def _parse_signal_list(value: Any) -> list[dict[str, str]]:
-    """Parse signals list with backward compat for legacy flat string lists.
+    """Parse signals from standard objects or compact string lists.
 
-    New format: [{"source": "news", "event": "...", "direction": "up", "strength": "high", "timing": "D-day"}, ...]
-    Legacy format: ["string signal 1", "string signal 2"]
+    Standard format: [{"source": "news", "event": "...", "direction": "up", "strength": "high", "timing": "D-day"}, ...]
+    Compact format: ["string signal 1", "string signal 2"]
     """
     if not isinstance(value, list):
         return []
@@ -1496,10 +1492,11 @@ def assemble_daily_report_json(
 
 def generate_and_publish_report(
     report_dict: dict[str, Any],
-    legacy_infer_type: bool = False,
-) -> tuple[Path, Path, Path]:
+    auto_open_html: bool | None = None,
+) -> dict[str, Any]:
     """Write report JSON, call build_report to generate HTML, then rebuild index."""
     import build_html_report
+    cfg = get_config().get("report", {})
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     json_path = REPORT_DIR / f"{report_dict['report_id']}.json"
     json_path.write_text(
@@ -1507,10 +1504,78 @@ def generate_and_publish_report(
         encoding="utf-8",
     )
     report_path, latest_json_path, snapshot_path = build_html_report.build_report(
-        json_path, legacy_infer_type=legacy_infer_type
+        json_path
     )
-    index_path = build_html_report.build_index(legacy_infer_type=legacy_infer_type)
-    return report_path, index_path, json_path
+    index_path = build_html_report.build_index()
+    sidecar_path = None
+    workbuddy_index_paths: list[Path] = []
+    workbuddy_root = Path(str(cfg.get("workbuddy_root") or Path.home() / "WorkBuddy")).expanduser()
+    if cfg.get("publish_workbuddy_sidecar", True) and workbuddy_root.exists():
+        sidecar_path = build_html_report.write_workbuddy_visible_report(
+            json_path,
+            report_path,
+            workbuddy_root=workbuddy_root,
+        )
+    if cfg.get("refresh_index", True):
+        if workbuddy_root.exists():
+            try:
+                workbuddy_index_paths = build_html_report.build_workbuddy_indexes(workbuddy_root)
+            except OSError:
+                workbuddy_index_paths = []
+
+    open_target = sidecar_path or report_path
+    opened_html = False
+    open_error = ""
+    should_open_html = cfg.get("auto_open_html", True) if auto_open_html is None else auto_open_html
+    if should_open_html:
+        opened_html, open_error = build_html_report.open_html_report(open_target)
+
+    chat_panel_files = [
+        {
+            "label": "主报告 HTML",
+            "path": str(report_path.resolve()),
+            "mime_type": "text/html",
+            "display": "open",
+        },
+        {
+            "label": "报告中心索引",
+            "path": str(index_path.resolve()),
+            "mime_type": "text/html",
+            "display": "open",
+        },
+    ]
+    if sidecar_path is not None:
+        chat_panel_files.insert(
+            0,
+            {
+                "label": "WorkBuddy 面板副本",
+                "path": str(sidecar_path.resolve()),
+                "mime_type": "text/html",
+                "display": "open",
+            },
+        )
+    if workbuddy_index_paths:
+        chat_panel_files.append(
+            {
+                "label": "WorkBuddy 报告索引",
+                "path": str((workbuddy_root / "index.html").resolve()),
+                "mime_type": "text/html",
+                "display": "open",
+            }
+        )
+
+    return {
+        "json_path": json_path,
+        "report_path": report_path,
+        "latest_json_path": latest_json_path,
+        "snapshot_path": snapshot_path,
+        "index_path": index_path,
+        "sidecar_path": sidecar_path,
+        "workbuddy_index_paths": workbuddy_index_paths,
+        "opened_html": opened_html,
+        "open_error": open_error,
+        "chat_panel_files": chat_panel_files,
+    }
 
 
 _METAL_NAMES: dict[str, str] = {
@@ -1662,7 +1727,6 @@ def run_predict_phase(
 def run_report_phase(
     today_date: str,
     metals: list[str] | None = None,
-    legacy_infer_type: bool = False,
 ) -> tuple[str, dict[str, Any]]:
     if metals is None:
         metals = METALS
@@ -1676,16 +1740,22 @@ def run_report_phase(
     report_dict = assemble_daily_report_json(
         today_date, todays_preds, verified, learnings, review
     )
-    report_path, index_path, json_path = generate_and_publish_report(
-        report_dict, legacy_infer_type=legacy_infer_type
+    published = generate_and_publish_report(
+        report_dict
     )
     return review_line, {
         "phase": "report",
         "date": today_date,
         "review": asdict(review),
-        "report_json": str(json_path.resolve()),
-        "report_html": str(report_path.resolve()),
-        "index_html": str(index_path.resolve()),
+        "report_json": str(published["json_path"].resolve()),
+        "report_html": str(published["report_path"].resolve()),
+        "index_html": str(published["index_path"].resolve()),
+        "workbuddy_report_html": (
+            str(published["sidecar_path"].resolve()) if published["sidecar_path"] else ""
+        ),
+        "opened_html": published["opened_html"],
+        "open_error": published["open_error"],
+        "chat_panel_files": published["chat_panel_files"],
         "predictions_included": len(todays_preds),
         "backtests_included": len(verified),
     }
@@ -1766,11 +1836,6 @@ def main() -> int:
         action="store_true",
         help="Allow overwriting existing result/prediction files.",
     )
-    parser.add_argument(
-        "--legacy-infer-type",
-        action="store_true",
-        help="Passed through to build_html_report for legacy JSON files.",
-    )
     args = parser.parse_args()
 
     today_date = args.date
@@ -1785,7 +1850,7 @@ def main() -> int:
             review_line, manifest = run_predict_phase(today_date, metals=metals, force=args.force)
         elif args.phase == "report":
             review_line, manifest = run_report_phase(
-                today_date, metals=metals, legacy_infer_type=args.legacy_infer_type
+                today_date, metals=metals
             )
         else:
             review_line, manifest = run_full(today_date, metals=metals)

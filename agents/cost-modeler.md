@@ -99,4 +99,4 @@ next_day_market_factor = clamp(1 + Σ metal_impact_pct + event_correction_pct, 0
 ## 记录要求
 
 - 成本影响估算要关联当日现货价、次日波动判断和供应链事件依据。
-- 次日复盘由 `next-day-volatility-tracker` 维护。
+- 次日复盘交由 `next-day-volatility-tracker` 处理。

@@ -1,13 +1,12 @@
 ---
 name: global-price-signal-detector
-description: Detect global price signals — LME backwardation/contango anomalies, cross-market arbitrage windows, premium spikes — that indicate international price pressure transmitting to domestic markets. Created after the 6/12 prediction missed a 20-year high LME aluminum backwardation that drove domestic Al prices up against seasonal expectations.
+description: Detect global price signals — LME backwardation/contango anomalies, cross-market arbitrage windows, premium spikes — that indicate international price pressure transmitting to domestic markets.
 ---
 
 # 国际价格信号检测器
 
 检测国际期货市场的结构性价格信号——这些信号往往领先于国内现货市场 1~5 天，是预测中的重要先行指标。本 Skill 专门解决"国际价格传导被低估"的问题。
 
-> **创建背景：** 6/12 预测铝（Al）时，判断"云南汛期复产→铝价 -2~4% 看跌"，但实际铝价上涨了。原因：LME 铝现货升水（cash-3M backwardation）创 20 年新高，国际铝价被逼空推高，完全对冲了国内复产的利空。这个信号在上周五的新闻扫描中被完全遗漏。
 
 ## 监控信号
 
@@ -127,7 +126,7 @@ LME 的现货-3个月价差（cash-3M spread）是最重要的国际价格信号
 
 | 场景 | 处理规则 | 案例 |
 |------|---------|------|
-| 国际↑ vs 国内↓ | **国际信号优先**（国际逼仓的力度通常大于季节性的供给增加） | 6/12 铝：云南复产（国内↓-2~4%）× LME 逼空（国际↑+3~8%）→ 实际上涨，国际信号胜 |
+| 国际↑ vs 国内↓ | **国际信号优先**（国际逼仓的力度通常大于季节性的供给增加） | 国内供给增加（国内↓）× LME 逼空（国际↑）→ 优先上调国际压力权重 |
 | 国际↓ vs 国内↑ | **按 1:1 权重综合**（两者都真实） | — |
 | 国际↑ vs 国内↑ | 同向共振，放大预测幅度 | — |
 | 国际↓ vs 国内↓ | 同向共振，放大预测幅度 | — |

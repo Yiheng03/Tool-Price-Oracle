@@ -137,11 +137,17 @@ After producing any final structured report, write a JSON file that conforms to
 Then immediately run:
 
 ```powershell
-py scripts\build_html_report.py path\to\report.json
+py scripts\build_html_report.py path\to\report.json --open-html
 ```
 
-The final chat response must include the Markdown links printed under
-`Chat links:` so the user can choose whether to open the latest HTML report or
-the report index. Do not hand-write a one-off `index.html` in a WorkBuddy task
-folder; the script maintains the repository report center and, when available,
-the WorkBuddy root/task-folder indexes.
+Publishing contract:
+
+- The publisher owns the fixed HTML page structure and visual template; only
+  report JSON content may vary between tasks.
+- The final JSON must have top-level `report_id`, `report_type`, `date`,
+  `title`, `summary`, and `metals` before running the publisher.
+- If the report is `tool_price`, it must also have top-level
+  `tool_cost_impact` and `recommendation`.
+- Write all report JSON and Markdown as UTF-8.
+
+Return the generated report link and HTML file path from the publisher output.

@@ -236,7 +236,7 @@ predicted flat -> abs(actual_change_pct) <= flat_threshold
 经验格式：
 
 ```markdown
-## 2026-06-23 | CU | Missed Range
+## YYYY-MM-DD | METAL | Missed Range
 
 - Prediction: up +1%~+3%
 - Actual: up +0.4%

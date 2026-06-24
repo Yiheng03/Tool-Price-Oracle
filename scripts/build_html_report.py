@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 import re
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -154,254 +156,322 @@ def _validate_report(report: dict[str, Any], rtype: str) -> list[str]:
     return errors
 
 
-REPORT_TEMPLATE = r"""<!doctype html>
-<html lang="en">
+REPORT_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>__TITLE__</title>
   <style>
     :root {
-      color-scheme: light;
-      --bg: #f6f7f9;
-      --panel: #ffffff;
-      --text: #16202a;
-      --muted: #657181;
-      --line: #dfe5ec;
-      --accent: #0f766e;
-      --accent-2: #9a3412;
-      --danger: #b91c1c;
+      --primary: #1a365d;
+      --accent: #2b6cb0;
+      --up: #e53e3e;
+      --down: #38a169;
+      --flat: #718096;
+      --warn: #b7791f;
+      --bg: #f7fafc;
+      --card: #ffffff;
+      --border: #e2e8f0;
+      --text: #2d3748;
+      --muted: #718096;
     }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      margin: 0;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
       background: var(--bg);
       color: var(--text);
+      padding: 20px;
     }
-    header {
-      padding: 28px min(5vw, 56px) 20px;
-      border-bottom: 1px solid var(--line);
-      background: var(--panel);
+    .container { max-width: 1100px; margin: 0 auto; }
+    .header {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: #fff;
+      padding: 24px 32px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+      box-shadow: 0 8px 20px rgba(26, 54, 93, 0.18);
     }
-    main { padding: 24px min(5vw, 56px) 44px; }
-    h1 { margin: 0 0 8px; font-size: 28px; line-height: 1.2; letter-spacing: 0; }
-    h2 { margin: 0 0 14px; font-size: 17px; letter-spacing: 0; }
-    h3 { margin: 16px 0 8px; font-size: 15px; letter-spacing: 0; }
-    p { line-height: 1.6; }
-    .meta, .muted { color: var(--muted); }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap: 16px;
-      align-items: stretch;
-    }
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 18px;
-    }
-    .span-12 { grid-column: span 12; }
-    .span-7 { grid-column: span 7; }
-    .span-5 { grid-column: span 5; }
-    .metric {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
+    .header h1 { font-size: 24px; line-height: 1.25; margin-bottom: 6px; letter-spacing: 0; }
+    .header .sub { opacity: 0.86; font-size: 14px; line-height: 1.6; }
+    .header .badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.22);
+      padding: 4px 11px;
+      border-radius: 12px;
+      font-size: 12px;
       margin-top: 10px;
+      line-height: 1.5;
     }
-    .metric div {
-      border: 1px solid var(--line);
+    .header .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .header a, .header button {
+      border: 1px solid rgba(255,255,255,0.36);
+      background: rgba(255,255,255,0.16);
+      color: #fff;
       border-radius: 8px;
-      padding: 12px;
-      min-height: 78px;
-    }
-    .metric strong {
-      display: block;
-      font-size: 24px;
-      margin-top: 8px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      overflow: hidden;
-      border-radius: 8px;
-    }
-    th, td {
-      border-bottom: 1px solid var(--line);
-      padding: 10px 8px;
-      text-align: left;
-      vertical-align: top;
-      font-size: 14px;
-    }
-    th { color: var(--muted); font-weight: 650; }
-    tr:last-child td { border-bottom: 0; }
-    ul { margin: 8px 0 0; padding-left: 20px; }
-    li { margin: 6px 0; line-height: 1.5; }
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      min-height: 24px;
-      padding: 3px 9px;
-      border-radius: 999px;
-      background: #e8f5f2;
-      color: var(--accent);
-      font-size: 13px;
-      font-weight: 650;
-    }
-    .pill.down, .pill.missed, .pill.high { background: #fef2f2; color: var(--danger); }
-    .pill.flat, .pill.medium { background: #eef2f7; color: #475569; }
-    .pill.volatile, .pill.partial { background: #fff7ed; color: var(--accent-2); }
-    .actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-top: 14px;
-    }
-    button, a.button {
-      border: 1px solid var(--line);
-      background: var(--panel);
-      color: var(--text);
-      border-radius: 8px;
-      padding: 9px 12px;
+      padding: 7px 10px;
       font: inherit;
+      font-size: 12px;
       cursor: pointer;
       text-decoration: none;
     }
-    button.primary, a.button.primary {
-      border-color: var(--accent);
-      background: var(--accent);
-      color: #fff;
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .summary-item {
+      text-align: center;
+      padding: 16px;
+      border-radius: 8px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .summary-item .label { font-size: 12px; color: var(--muted); min-height: 18px; }
+    .summary-item .price { font-size: 22px; font-weight: 700; margin: 4px 0; color: #1a202c; }
+    .summary-item .change { font-size: 13px; font-weight: 650; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .card h2 {
+      font-size: 17px;
+      color: var(--primary);
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--accent);
+      letter-spacing: 0;
+    }
+    .card h3 { font-size: 14px; color: var(--accent); margin: 12px 0 8px; letter-spacing: 0; }
+    .card p { font-size: 13px; line-height: 1.8; margin-bottom: 8px; }
+    .muted { color: var(--muted); }
+    .table-wrap { width: 100%; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      background: #edf2f7;
+      text-align: left;
+      padding: 8px 10px;
+      font-weight: 600;
+      font-size: 12px;
+      color: #4a5568;
+      white-space: nowrap;
+    }
+    td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      line-height: 1.55;
+    }
+    tr:hover td { background: #f7fafc; }
+    tr:last-child td { border-bottom: none; }
+    ul { padding-left: 18px; font-size: 13px; line-height: 1.8; }
+    li { margin: 4px 0; }
+    .tag-up { color: var(--up); font-weight: 650; }
+    .tag-down { color: var(--down); font-weight: 650; }
+    .tag-flat { color: var(--flat); font-weight: 650; }
+    .tag-volatile { color: var(--warn); font-weight: 650; }
+    .tag-hit, .tag-miss {
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .tag-hit { background: #c6f6d5; color: #22543d; }
+    .tag-miss { background: #fed7d7; color: #9b2c2c; }
+    .bias-box {
+      background: #fffbeb;
+      border: 1px solid #f6e05e;
+      border-radius: 6px;
+      padding: 12px;
+      margin-top: 10px;
+      font-size: 13px;
+      line-height: 1.75;
+    }
+    .bias-box strong { color: #744210; }
+    .strategy-box {
+      background: #ebf8ff;
+      border: 1px solid #bee3f8;
+      border-radius: 6px;
+      padding: 14px;
+      font-size: 13px;
+      line-height: 1.8;
+    }
+    .strategy-box strong { color: #2a4365; }
+    .metric-table td:first-child { width: 180px; color: #4a5568; }
+    .footer {
+      text-align: center;
+      background: #edf2f7;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.8;
     }
     pre {
       max-height: 360px;
       overflow: auto;
       background: #111827;
       color: #e5e7eb;
-      border-radius: 8px;
+      border-radius: 6px;
       padding: 14px;
-      font-size: 13px;
+      font-size: 12px;
       line-height: 1.5;
     }
-    @media (max-width: 780px) {
-      .span-7, .span-5 { grid-column: span 12; }
-      .metric { grid-template-columns: 1fr; }
-      th, td { font-size: 13px; }
+    @media (max-width: 768px) {
+      body { padding: 12px; }
+      .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .header { padding: 16px 20px; }
+      .header h1 { font-size: 18px; }
+      .card { padding: 16px; }
+      table { font-size: 12px; }
+      td, th { padding: 6px 8px; }
     }
   </style>
 </head>
 <body>
-  <header>
-    <div class="meta">__TYPE_LABEL__ / __DATE__ / __REPORT_ID__</div>
-    <h1>__TITLE__</h1>
-    <p>__SUMMARY__</p>
-    <div class="actions">
-      <a class="button" href="__INDEX_HREF__">Back to report center</a>
-      <button class="primary" id="download-json">Download JSON</button>
-      <button id="toggle-json">Show JSON</button>
+  <div class="container">
+    <div class="header">
+      <h1>__TITLE__</h1>
+      <div class="sub">__DATE__ · __TYPE_LABEL__ · __REPORT_ID__</div>
+      <div class="badge">今日核心：__SUMMARY__</div>
+      <div class="actions">
+        <a href="__INDEX_HREF__">报告中心</a>
+        <button id="download-json">下载 JSON</button>
+        <button id="toggle-json">查看 JSON</button>
+      </div>
     </div>
-  </header>
-  <main class="grid" id="report-root"></main>
+    <div id="report-root"></div>
+  </div>
   <script type="application/json" id="report-data">__REPORT_JSON__</script>
   <script>
     const report = JSON.parse(document.getElementById("report-data").textContent);
     const root = document.getElementById("report-root");
-    const reportTypes = __REPORT_TYPES_JSON__;
     const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
     }[ch]));
+    const directionText = { up: "看涨", down: "看跌", flat: "横盘", volatile: "震荡" };
+    const confidenceText = { high: "高", medium: "中", low: "低" };
+    const classForDirection = (value) => {
+      if (value === "up") return "tag-up";
+      if (value === "down") return "tag-down";
+      if (value === "volatile") return "tag-volatile";
+      return "tag-flat";
+    };
     const fmtPct = (range) => {
       if (!Array.isArray(range) || range.length < 2) return "";
-      return `${(Number(range[0]) * 100).toFixed(2)}% to ${(Number(range[1]) * 100).toFixed(2)}%`;
+      const low = Number(range[0]) * 100;
+      const high = Number(range[1]) * 100;
+      if (Math.abs(low + high) < 0.001) return `±${Math.abs(high).toFixed(2)}%`;
+      return `${low.toFixed(2)}% ~ ${high.toFixed(2)}%`;
     };
     const fmtMoney = (value, currency = "") => {
       if (value === undefined || value === null || value === "") return "";
-      return `${currency} ${Number(value).toFixed(2)}`.trim();
+      const number = Number(value);
+      const rendered = Number.isFinite(number) ? number.toLocaleString(undefined, { maximumFractionDigits: 2 }) : value;
+      return `${currency || ""} ${rendered}`.trim();
     };
-    const panel = (title, body, span = 12) => `
-      <section class="panel span-${span}">
+    const card = (title, body, extraClass = "") => `
+      <div class="card ${extraClass}">
         <h2>${escapeHtml(title)}</h2>
         ${body}
-      </section>
+      </div>
     `;
     const rows = (items, columns) => items.map((item) => `
       <tr>${columns.map(([key]) => `<td>${escapeHtml(item?.[key] ?? "")}</td>`).join("")}</tr>
     `).join("");
     const table = (items, columns) => {
-      if (!Array.isArray(items) || items.length === 0) return '<p class="muted">No entries.</p>';
+      if (!Array.isArray(items) || items.length === 0) return '<p class="muted">暂无数据。</p>';
       return `
-        <table>
+        <div class="table-wrap"><table>
           <thead><tr>${columns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("")}</tr></thead>
           <tbody>${rows(items, columns)}</tbody>
-        </table>
+        </table></div>
       `;
+    };
+    const summaryGrid = () => {
+      const metals = Array.isArray(report.metals) ? report.metals.slice(0, 4) : [];
+      if (metals.length === 0) return "";
+      return `<div class="summary-grid">${metals.map((metal) => `
+        <div class="summary-item">
+          <div class="label">${escapeHtml(metal.name || metal.code)}</div>
+          <div class="price">${escapeHtml(fmtMoney(metal.spot_price, metal.currency))}</div>
+          <div class="change ${classForDirection(metal.direction)}">${escapeHtml(directionText[metal.direction] || metal.direction || "横盘")} ${escapeHtml(fmtPct(metal.range_pct))}</div>
+        </div>
+      `).join("")}</div>`;
     };
     const metalTable = () => {
       const metals = report.metals || [];
-      if (!Array.isArray(metals) || metals.length === 0) return '<p class="muted">No entries.</p>';
+      if (!Array.isArray(metals) || metals.length === 0) return '<p class="muted">暂无数据。</p>';
       return `
-        <table>
+        <div class="table-wrap"><table>
           <thead>
             <tr>
-              <th>Metal</th>
-              <th>Spot</th>
-              <th>D+1</th>
-              <th>Range</th>
-              <th>Confidence</th>
-              <th>Rationale</th>
+              <th>金属</th>
+              <th>今日现货</th>
+              <th>单位</th>
+              <th>D+1 方向</th>
+              <th>幅度区间</th>
+              <th>置信度</th>
+              <th>核心理由</th>
             </tr>
           </thead>
           <tbody>
             ${metals.map((metal) => `
               <tr>
-                <td><strong>${escapeHtml(metal.code)}</strong><br><span class="muted">${escapeHtml(metal.name)}</span></td>
-                <td>${escapeHtml(Number(metal.spot_price).toLocaleString())}<br><span class="muted">${escapeHtml(metal.unit)}</span></td>
-                <td><span class="pill ${escapeHtml(metal.direction)}">${escapeHtml(metal.direction)}</span></td>
+                <td><strong>${escapeHtml(metal.name || metal.code)}</strong><br><span class="muted">${escapeHtml(metal.code)}</span></td>
+                <td>${escapeHtml(fmtMoney(metal.spot_price, metal.currency))}</td>
+                <td>${escapeHtml(metal.unit)}</td>
+                <td><span class="${classForDirection(metal.direction)}">${escapeHtml(directionText[metal.direction] || metal.direction || "")}</span></td>
                 <td>${escapeHtml(fmtPct(metal.range_pct))}</td>
-                <td>${escapeHtml(metal.confidence)}</td>
+                <td>${escapeHtml(confidenceText[metal.confidence] || metal.confidence || "")}</td>
                 <td>${escapeHtml(metal.rationale)}</td>
               </tr>
             `).join("")}
           </tbody>
-        </table>
+        </table></div>
       `;
     };
     const recommendationPanel = () => {
       if (!report.recommendation) return "";
-      return panel("Recommendation", `
-        <p><span class="pill ${escapeHtml(report.recommendation.risk_level)}">${escapeHtml(report.recommendation.risk_level)}</span></p>
-        <p><strong>${escapeHtml(report.recommendation.action)}</strong></p>
-        <p class="muted">${escapeHtml(report.recommendation.reason)}</p>
+      return card("采购策略", `
+        <div class="strategy-box">
+          <p><strong>综合建议：</strong>${escapeHtml(report.recommendation.action)}</p>
+          <p><strong>风险等级：</strong>${escapeHtml(report.recommendation.risk_level)}</p>
+          <p>${escapeHtml(report.recommendation.reason)}</p>
+        </div>
       `);
     };
     const costPanel = () => {
       const impact = report.tool_cost_impact;
       if (!impact) return "";
-      return panel("Tool Cost Impact", `
-        <p class="muted">${escapeHtml(impact.tool_spec)}</p>
-        <div class="metric">
-          <div><span class="muted">Base</span><strong>${escapeHtml(fmtMoney(impact.base_cost, impact.currency))}</strong></div>
-          <div><span class="muted">Low</span><strong>${escapeHtml(fmtMoney(impact.next_day_low, impact.currency))}</strong></div>
-          <div><span class="muted">High</span><strong>${escapeHtml(fmtMoney(impact.next_day_high, impact.currency))}</strong></div>
-        </div>
-        <p><strong>Main driver:</strong> ${escapeHtml(impact.main_driver)}</p>
-      `, 5);
+      return card("刀具成本影响", `
+        <div class="table-wrap"><table class="metric-table"><tbody>
+          <tr><td>材质/场景</td><td>${escapeHtml(impact.tool_spec)}</td></tr>
+          <tr><td>当前成本基准</td><td>${escapeHtml(fmtMoney(impact.base_cost, impact.currency))}</td></tr>
+          <tr><td>次日成本风险区间</td><td><strong>${escapeHtml(fmtMoney(impact.next_day_low, impact.currency))} ~ ${escapeHtml(fmtMoney(impact.next_day_high, impact.currency))}</strong></td></tr>
+          <tr><td>主要驱动</td><td>${escapeHtml(impact.main_driver)}</td></tr>
+        </tbody></table></div>
+      `);
     };
     const backtestPanel = () => {
       const yesterday = report.json_payload?.yesterday_backtest;
       const items = report.backtests || report.json_payload?.backtests || (yesterday ? [yesterday] : []);
       if (!Array.isArray(items) || items.length === 0) return "";
-      return panel("Backtest Results", table(items, [
-        ["metal", "Metal"],
-        ["prediction_date", "Prediction Date"],
-        ["actual_date", "Actual Date"],
-        ["predicted_direction", "Predicted"],
-        ["actual_direction", "Actual"],
-        ["hit_direction", "Direction Hit"],
-        ["hit_range", "Range Hit"],
-        ["bias_reason", "Bias Reason"],
-        ["next_adjustment", "Next Adjustment"],
+      return card("预测复盘", table(items, [
+        ["metal", "金属"],
+        ["prediction_date", "预测日期"],
+        ["actual_date", "实际日期"],
+        ["predicted_direction", "预测方向"],
+        ["actual_direction", "实际方向"],
+        ["hit_direction", "方向命中"],
+        ["hit_range", "区间命中"],
+        ["bias_reason", "偏差原因"],
+        ["next_adjustment", "调整规则"],
       ]));
     };
     const yesterdayReviewPanel = () => {
@@ -411,40 +481,40 @@ REPORT_TEMPLATE = r"""<!doctype html>
       const total = backtests.length;
       const hits = backtests.filter((bt) => bt.hit_direction).length;
       const hitRate = total > 0 ? ((hits / total) * 100).toFixed(1) : "0.0";
-      const hitClass = total > 0 && hits / total >= 0.5 ? "" : "missed";
       let body = `
-        <div style="background:#fffbeb;border-left:4px solid #f59e0b;padding:14px 18px;border-radius:6px;margin-bottom:16px;">
-          <div style="font-size:20px;font-weight:700;color:#92400e;margin-bottom:6px;">${escapeHtml(yr.headline || "")}</div>
-          <div style="font-size:15px;color:#657181;">方向命中率：<strong style="font-size:22px;" class="pill ${hitClass}">${hitRate}%</strong> &nbsp;（${hits}/${total}）</div>
+        <div class="bias-box">
+          <strong>${escapeHtml(yr.headline || "复盘摘要")}</strong><br>
+          方向命中率：<strong>${hitRate}%</strong>（${hits}/${total}）
         </div>
       `;
       if (yr.summary) {
-        body += `<p style="font-size:15px;line-height:1.7;">${escapeHtml(yr.summary)}</p>`;
+        body += `<p>${escapeHtml(yr.summary)}</p>`;
       }
       if (Array.isArray(yr.learnings_written) && yr.learnings_written.length > 0) {
-        body += `<h3>经验记录</h3><ul>${yr.learnings_written.map((l) => `<li>${escapeHtml(typeof l === "string" ? l : JSON.stringify(l))}</li>`).join("")}</ul>`;
+        body += `<h3>偏差学习记录</h3><ul>${yr.learnings_written.map((l) => `<li>${escapeHtml(typeof l === "string" ? l : JSON.stringify(l))}</li>`).join("")}</ul>`;
       }
       if (backtests.length > 0) {
         body += `<h3>逐项复核</h3>
-        <table>
+        <div class="table-wrap"><table>
           <thead><tr>
-            <th>品种</th><th>预测方向</th><th>实际方向</th><th>命中</th><th>偏差原因</th><th>调整规则</th>
+            <th>金属</th><th>预测方向</th><th>实际方向</th><th>方向</th><th>区间</th><th>偏差原因</th><th>调整规则</th>
           </tr></thead>
           <tbody>
             ${backtests.map((bt) => `
               <tr>
                 <td><strong>${escapeHtml(bt.metal || "")}</strong></td>
-                <td><span class="pill ${escapeHtml(bt.predicted_direction || "")}">${escapeHtml(bt.predicted_direction || "")}</span></td>
-                <td><span class="pill ${escapeHtml(bt.actual_direction || "")}">${escapeHtml(bt.actual_direction || "")}</span></td>
-                <td><span class="pill ${bt.hit_direction ? "" : "missed"}">${bt.hit_direction ? "✓ 命中" : "✗ 未中"}</span></td>
+                <td><span class="${classForDirection(bt.predicted_direction)}">${escapeHtml(directionText[bt.predicted_direction] || bt.predicted_direction || "")}</span></td>
+                <td><span class="${classForDirection(bt.actual_direction)}">${escapeHtml(directionText[bt.actual_direction] || bt.actual_direction || "")}</span></td>
+                <td><span class="${bt.hit_direction ? "tag-hit" : "tag-miss"}">${bt.hit_direction ? "命中" : "未中"}</span></td>
+                <td><span class="${bt.hit_range ? "tag-hit" : "tag-miss"}">${bt.hit_range ? "命中" : "未中"}</span></td>
                 <td>${escapeHtml(bt.bias_reason || "")}</td>
                 <td>${escapeHtml(bt.next_adjustment || "")}</td>
               </tr>
             `).join("")}
           </tbody>
-        </table>`;
+        </table></div>`;
       }
-      return panel("昨日预测复盘", body, 12);
+      return card("昨日预测复盘", body);
     };
     const sectionsPanel = () => {
       if (!Array.isArray(report.sections) || report.sections.length === 0) return "";
@@ -457,40 +527,43 @@ REPORT_TEMPLATE = r"""<!doctype html>
         if (Array.isArray(section.rows) && Array.isArray(section.columns)) {
           body += table(section.rows, section.columns.map((col) => [col.key, col.label || col.key]));
         }
-        return panel(section.title || "Details", body || '<p class="muted">No details.</p>');
+        return card(section.title || "明细", body || '<p class="muted">暂无明细。</p>');
       }).join("");
     };
     const type = report.report_type || "tool_price";
-    const typeDescription = reportTypes[type]?.description || "";
-    let body = yesterdayReviewPanel();
-    body += panel("Report Type", `<p>${escapeHtml(typeDescription)}</p>`, 12);
+    let body = summaryGrid();
     if (type === "tool_price") {
-      body += panel("Metal Signals", metalTable(), report.tool_cost_impact ? 7 : 12);
+      body += card("当日金属现货与明日判断", metalTable());
+      body += sectionsPanel();
+      body += yesterdayReviewPanel();
       body += costPanel();
       body += recommendationPanel();
     } else if (type === "single_metal") {
-      body += panel("Single Metal Outlook", metalTable(), 12);
+      body += card("单金属明日判断", metalTable());
+      body += sectionsPanel();
       body += recommendationPanel();
     } else if (type === "daily_briefing" || type === "weekly_briefing") {
-      body += panel("Metal Briefing", metalTable(), 12);
+      body += card("当日金属现货与明日判断", metalTable());
       body += sectionsPanel();
+      body += yesterdayReviewPanel();
       body += recommendationPanel();
     } else if (type === "backtest") {
       body += backtestPanel();
       body += sectionsPanel();
       body += recommendationPanel();
     } else {
-      body += panel("Metal Signals", metalTable(), 12);
+      body += card("当日金属现货与明日判断", metalTable());
       body += sectionsPanel();
       body += recommendationPanel();
     }
-    body += panel("Embedded JSON", '<pre id="json-view"></pre>', 12).replace('<section', '<section id="json-panel" hidden');
+    body += `<div id="json-panel" hidden class="card"><h2>原始 JSON</h2><pre id="json-view"></pre></div>`;
+    body += `<div class="card footer">刀具行情参谋团 · 自动化报告 · 数据来自结构化 JSON<br>发布时间：${escapeHtml(new Date().toLocaleString())}</div>`;
     root.innerHTML = body;
     document.getElementById("json-view").textContent = JSON.stringify(report, null, 2);
     document.getElementById("toggle-json").addEventListener("click", () => {
       const panel = document.getElementById("json-panel");
       panel.hidden = !panel.hidden;
-      document.getElementById("toggle-json").textContent = panel.hidden ? "Show JSON" : "Hide JSON";
+      document.getElementById("toggle-json").textContent = panel.hidden ? "查看 JSON" : "隐藏 JSON";
     });
     document.getElementById("download-json").addEventListener("click", () => {
       const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
@@ -647,16 +720,10 @@ INDEX_TEMPLATE = r"""<!doctype html>
 """
 
 
-def report_type(report: dict[str, Any], *, legacy_infer_type: bool = False) -> str:
+def report_type(report: dict[str, Any]) -> str:
     value = str(report.get("report_type") or "").strip()
     if value in REPORT_TYPES:
         return value
-    if legacy_infer_type:
-        if is_backtest_report(report):
-            return "backtest"
-        if len(report.get("metals", [])) == 1 and not report.get("tool_cost_impact"):
-            return "single_metal"
-        return "tool_price"
     valid = ", ".join(sorted(REPORT_TYPES))
     if not value:
         raise ValueError(
@@ -668,7 +735,7 @@ def report_type(report: dict[str, Any], *, legacy_infer_type: bool = False) -> s
     )
 
 
-def load_report(path: Path, *, legacy_infer_type: bool = False) -> dict[str, Any]:
+def load_report(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         report = json.load(handle)
     missing = [
@@ -678,7 +745,7 @@ def load_report(path: Path, *, legacy_infer_type: bool = False) -> dict[str, Any
     ]
     if missing:
         raise ValueError(f"{path} is missing required keys: {', '.join(missing)}")
-    rtype = report_type(report, legacy_infer_type=legacy_infer_type)
+    rtype = report_type(report)
     report["report_type"] = rtype
 
     validation_errors = _validate_report(report, rtype)
@@ -768,10 +835,10 @@ def persist_report_data(report: dict[str, Any]) -> tuple[dict[str, Any], Path, P
     return enriched, latest_json_path, snapshot_path, topic
 
 
-def build_report(json_path: Path, *, legacy_infer_type: bool = False) -> tuple[Path, Path, Path]:
-    report = load_report(json_path, legacy_infer_type=legacy_infer_type)
+def build_report(json_path: Path) -> tuple[Path, Path, Path]:
+    report = load_report(json_path)
     report, latest_json_path, snapshot_path, topic = persist_report_data(report)
-    rtype = report_type(report, legacy_infer_type=legacy_infer_type)
+    rtype = report_type(report)
     report_id = slugify(report["report_id"])
     output_path = LATEST_DIR / f"{topic}.html"
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -784,18 +851,17 @@ def build_report(json_path: Path, *, legacy_infer_type: bool = False) -> tuple[P
         .replace("__SUMMARY__", html.escape(report["summary"]))
         .replace("__INDEX_HREF__", "../index.html")
         .replace("__REPORT_JSON__", _escape_script_json(report_json))
-        .replace("__REPORT_TYPES_JSON__", json.dumps(REPORT_TYPES, ensure_ascii=False))
     )
     output_path.write_text(rendered, encoding="utf-8")
     return output_path, latest_json_path, snapshot_path
 
 
-def build_index(*, legacy_infer_type: bool = False) -> Path:
+def build_index() -> Path:
     reports = []
     for json_path in sorted(DATA_DIR.glob("*.latest.json")):
-        report = load_report(json_path, legacy_infer_type=legacy_infer_type)
+        report = load_report(json_path)
         report_id = slugify(report["report_id"])
-        rtype = report_type(report, legacy_infer_type=legacy_infer_type)
+        rtype = report_type(report)
         topic = report.get("report_storage", {}).get("topic") or topic_slug(report)
         html_path = LATEST_DIR / f"{topic}.html"
         if not html_path.exists():
@@ -915,14 +981,31 @@ h1 {{ margin: 0 0 8px; color: #1a237e; font-size: 40px; letter-spacing: 0; }}
 """
 
 
+def _is_workbuddy_report_html(workbuddy_root: Path, path: Path) -> bool:
+    if not path.is_file() or path.name.lower() == "index.html":
+        return False
+    try:
+        parts = path.relative_to(workbuddy_root).parts
+    except ValueError:
+        return False
+    if not parts:
+        return False
+    top_dir = parts[0]
+    is_task_dir = bool(re.match(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$", top_dir))
+    is_automation_dir = top_dir.startswith("automation-")
+    if not (is_task_dir or is_automation_dir):
+        return False
+    return "resources" not in parts and "locales" not in parts
+
+
 def build_workbuddy_indexes(workbuddy_root: Path) -> list[Path]:
     if not workbuddy_root.exists() or not workbuddy_root.is_dir():
         return []
     report_paths = sorted(
         [
             path
-            for path in workbuddy_root.glob("*/report_*.html")
-            if path.is_file() and "resources" not in path.parts
+            for path in workbuddy_root.rglob("*.html")
+            if _is_workbuddy_report_html(workbuddy_root, path)
         ],
         key=lambda path: path.stat().st_mtime,
         reverse=True,
@@ -937,19 +1020,78 @@ def build_workbuddy_indexes(workbuddy_root: Path) -> list[Path]:
     return written
 
 
+def latest_workbuddy_task_dir(workbuddy_root: Path) -> Path | None:
+    """Return the newest timestamped WorkBuddy task directory, when present."""
+    if not workbuddy_root.exists() or not workbuddy_root.is_dir():
+        return None
+    candidates = []
+    pattern = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$")
+    for path in workbuddy_root.iterdir():
+        if path.is_dir() and pattern.match(path.name):
+            candidates.append(path)
+    if not candidates:
+        return None
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def write_workbuddy_visible_report(
+    json_path: Path,
+    report_path: Path,
+    *,
+    workbuddy_root: Path,
+) -> Path | None:
+    """Copy the HTML into the current WorkBuddy-visible task report directory.
+
+    When the source JSON is already inside a WorkBuddy task, keep the sidecar
+    next to it. Otherwise publish a sidecar into the latest timestamped task
+    directory.
+    """
+    try:
+        sidecar_path = write_workbuddy_sidecar_report(
+            json_path,
+            report_path,
+            workbuddy_root=workbuddy_root,
+        )
+    except OSError:
+        sidecar_path = None
+    if sidecar_path is not None:
+        return sidecar_path
+
+    task_dir = latest_workbuddy_task_dir(workbuddy_root)
+    if task_dir is None:
+        return None
+
+    report = load_report(json_path)
+    report_id = slugify(report["report_id"])
+    output_dir = task_dir / ".workbuddy" / "memory" / "reports"
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{report_id}.html"
+
+        source = report_path.read_text(encoding="utf-8")
+        source = source.replace("../index.html", _path_href(output_path, workbuddy_root / "index.html"))
+        output_path.write_text(source, encoding="utf-8")
+        output_path.with_suffix(".json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        return None
+    return output_path
+
+
 def write_workbuddy_sidecar_report(
     json_path: Path,
     report_path: Path,
     *,
     workbuddy_root: Path,
-    legacy_infer_type: bool = False,
 ) -> Path | None:
     if not _is_relative_to(json_path, workbuddy_root):
         return None
     if json_path.parent == workbuddy_root:
         return None
-    report = load_report(json_path, legacy_infer_type=legacy_infer_type)
-    rtype = report_type(report, legacy_infer_type=legacy_infer_type)
+    report = load_report(json_path)
+    rtype = report_type(report)
     report_id = slugify(report["report_id"])
     source = report_path.read_text(encoding="utf-8")
     source = source.replace("../index.html", _path_href(json_path.with_suffix(".html"), workbuddy_root / "index.html"))
@@ -967,6 +1109,19 @@ def markdown_link(path: Path, label: str) -> str:
     return f"[{label}]({path.resolve().as_posix()})"
 
 
+def open_html_report(path: Path) -> tuple[bool, str]:
+    """Open an HTML report with the OS default handler, returning status text."""
+    try:
+        resolved = path.resolve()
+        if os.name == "nt":
+            os.startfile(str(resolved))  # type: ignore[attr-defined]
+        else:
+            webbrowser.open(resolved.as_uri())
+        return True, ""
+    except Exception as exc:  # pragma: no cover - depends on desktop shell state.
+        return False, str(exc)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("json_report", nargs=1, help="Path to a report JSON file generated by the agent.")
@@ -974,11 +1129,6 @@ def main() -> int:
         "--no-chat-links",
         action="store_true",
         help="Do not print Markdown links intended to be pasted into the chat.",
-    )
-    parser.add_argument(
-        "--legacy-infer-type",
-        action="store_true",
-        help="Infer report_type for legacy JSON files that lack a valid report_type field.",
     )
     parser.add_argument(
         "--workbuddy-root",
@@ -990,6 +1140,11 @@ def main() -> int:
         "--no-workbuddy-index",
         action="store_true",
         help="Do not refresh WorkBuddy root/task-directory report indexes.",
+    )
+    parser.add_argument(
+        "--open-html",
+        action="store_true",
+        help="Open the generated HTML report with the OS default browser.",
     )
     args = parser.parse_args()
 
@@ -1010,18 +1165,17 @@ def main() -> int:
             print(f"No report JSON files found in: {REPORT_DIR}")
         print("Tip: save the agent output JSON into .workbuddy/memory/reports/ first, then pass that path to this script.")
         return 1
-    report_path, latest_json_path, snapshot_path = build_report(json_path, legacy_infer_type=args.legacy_infer_type)
+    report_path, latest_json_path, snapshot_path = build_report(json_path)
     sidecar_path = None
     workbuddy_index_paths: list[Path] = []
     if not args.no_workbuddy_index and args.workbuddy_root.exists():
-        sidecar_path = write_workbuddy_sidecar_report(
+        sidecar_path = write_workbuddy_visible_report(
             json_path,
             report_path,
             workbuddy_root=args.workbuddy_root,
-            legacy_infer_type=args.legacy_infer_type,
         )
         workbuddy_index_paths = build_workbuddy_indexes(args.workbuddy_root)
-    index_path = build_index(legacy_infer_type=args.legacy_infer_type)
+    index_path = build_index()
     print(f"Built report: {report_path}")
     print(f"Wrote latest JSON: {latest_json_path}")
     print(f"Wrote snapshot: {snapshot_path}")
@@ -1030,6 +1184,12 @@ def main() -> int:
         print(f"Wrote WorkBuddy sidecar report: {sidecar_path}")
     if workbuddy_index_paths:
         print(f"Refreshed WorkBuddy indexes: {len(workbuddy_index_paths)}")
+    if args.open_html:
+        opened, open_error = open_html_report(sidecar_path or report_path)
+        if opened:
+            print(f"Opened HTML report: {sidecar_path or report_path}")
+        else:
+            print(f"Could not open HTML report automatically: {open_error}")
     if not args.no_chat_links:
         print("")
         print("Chat links:")

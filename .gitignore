@@ -28,3 +28,4 @@
 !.workbuddy/memory/reports/latest/.gitkeep
 __pycache__/
 *.pyc
+*.zip

@@ -4,12 +4,6 @@
   "price_source_priority": ["100ppi", "smm", "manual_cache"],
   "report_type": "daily_briefing",
   "require_yesterday_review_first": true,
-  "prediction": {
-    "horizon_days": 1,
-    "save_records": true,
-    "save_learnings": true,
-    "learnings_file": ".workbuddy/memory/learnings/learnings.json"
-  },
   "backtest": {
     "enabled": true,
     "auto_write_results": true,
@@ -23,6 +17,9 @@
   "report": {
     "output_dir": ".workbuddy/memory/reports",
     "build_html": true,
-    "refresh_index": true
+    "refresh_index": true,
+    "auto_open_html": true,
+    "publish_workbuddy_sidecar": true,
+    "workbuddy_root": "~/WorkBuddy"
   }
 }

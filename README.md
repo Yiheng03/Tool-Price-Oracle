@@ -58,6 +58,16 @@ Publish the daily briefing report:
 py scripts\daily_workbuddy_run.py --phase report --date YYYY-MM-DD
 ```
 
+The report phase writes the latest HTML report and the report index:
+
+```text
+.workbuddy/memory/reports/latest/{REPORT_TYPE}_{TOPIC}.html
+.workbuddy/memory/reports/index.html
+```
+
+When WorkBuddy publishing is enabled, the same HTML report is also copied to
+the current WorkBuddy task folder and returned in the manifest.
+
 Use `--metals AL,CU,NI` to limit the metal set. Use `--json-only` when another
 tool only needs the machine-readable manifest.
 
@@ -145,19 +155,26 @@ Build an HTML report from a valid report JSON:
 py scripts\build_html_report.py path\to\report.json
 ```
 
+The publisher owns the fixed HTML page structure and visual template. Report
+tasks should only change the structured JSON content; do not hand-write or vary
+the HTML layout per task.
+
 If you do not want to refresh `%USERPROFILE%\WorkBuddy`, pass:
 
 ```powershell
 py scripts\build_html_report.py path\to\report.json --no-workbuddy-index
 ```
 
+To open a report immediately when using the standalone builder, pass:
+
+```powershell
+py scripts\build_html_report.py path\to\report.json --open-html
+```
+
 ## Validation
 
-Run local smoke checks without touching real `.workbuddy` state:
+Run local validation checks:
 
 ```powershell
 py -B scripts\validate_closed_loop.py
 ```
-
-The validation patches all runtime paths into a temporary directory, so it is
-safe to run in a clean project checkout.
